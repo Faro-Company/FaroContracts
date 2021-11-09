@@ -23,7 +23,7 @@ contract OfferableERC721VaultFactory is Ownable, Pausable {
     event Mint(address indexed token, uint256 id, uint256 price, address vault, uint256 vaultId);
 
     constructor() {
-        logic = address(new OfferableTokenVault());
+        logic = address(new OfferableERC721TokenVault());
     }
 
     /// @notice the function to mint a new vault
@@ -40,7 +40,7 @@ contract OfferableERC721VaultFactory is Ownable, Pausable {
         uint[] memory _allocations) external whenNotPaused returns(uint256) {
         bytes memory _initializationCalldata =
         abi.encodeWithSignature(
-            "initialize(address,address,uint256,uint256,uint256,uint256,string,string)",
+            "initialize(address,address,uint256,uint256,uint256,uint256,string,string,address[],address[])",
             _token,
             _projectFundingAddress,
             _id,
@@ -66,6 +66,10 @@ contract OfferableERC721VaultFactory is Ownable, Pausable {
         vaultCount++;
 
         return vaultCount - 1;
+    }
+
+    function viewTokenWithID(uint256 _id) external returns (uint256) {
+        return uint256(uint160(address(vaults[_id])));
     }
 
     function pause() external onlyOwner {

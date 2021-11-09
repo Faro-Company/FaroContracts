@@ -1,11 +1,18 @@
 // scripts/deploy.js
 async function main () {
     // We get the contract to deploy
-    const Box = await ethers.getContractFactory('OfferableERC721TokenVault');
+
+    const ERCVaultFactory = await ethers.getContractFactory('OfferableERC721VaultFactory');
+    console.log('Deploying OfferableTokenVaultFactory...');
+    const ercVaultFactory = await ERCVaultFactory.deploy();
+    await ercVaultFactory.deployed();
+    console.log('OfferableTokenVault deployed to:', ercVaultFactory.address);
+
+    const ERCVault = await ethers.getContractFactory('OfferableERC721TokenVault');
     console.log('Deploying OfferableTokenVault...');
-    const box = await Box.deploy();
-    await box.deployed();
-    console.log('OfferableTokenVault deployed to:', box.address);
+    const ercVault = await ERCVault.deploy();
+    await ercVault.deployed();
+    console.log('OfferableTokenVault deployed to:', ercVault.address);
 }
 
 main()
