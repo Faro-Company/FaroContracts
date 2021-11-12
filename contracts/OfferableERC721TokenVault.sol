@@ -74,9 +74,10 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable 
         listingPeriod = 3 days;
         listingState = State.inactive;
         listingPrice = _listingPrice;
+
         require(_createFundersMapping(funderAddresses, allocations) == _supply,
             "Given supply is not equal to the sum of allocations");
-        _mint(projectFundingAddress, _supply);
+        //_mint(projectFundingAddress, _supply);
         remaining = _supply;
     }
 
