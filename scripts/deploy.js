@@ -2,11 +2,11 @@
 async function main () {
     // We get the contract to deploy
 
-    const KTLOwnershipFactoryContract = await ethers.getContractFactory('KTLOwnershipFactory');
-    console.log('Deploying KTLO ownership factory contract...');
-    const kTLOwnershipFactoryContract = await KTLOwnershipFactoryContract.deploy();
-    await kTLOwnershipFactoryContract.deployed();
-    console.log("Sample contract deployed to:", kTLOwnershipFactoryContract.address);
+    const KTLTokenContract = await ethers.getContractFactory('KTLOToken');
+    console.log('Deploying KTLO Token contract...');
+    const kTLTokenContract = await KTLTokenContract.deploy();
+    await kTLTokenContract.deployed();
+    console.log("KTLO Token contract deployed to:", kTLTokenContract.address);
 
     const ERCVaultFactory = await ethers.getContractFactory('OfferableERC721VaultFactory');
     console.log('Deploying OfferableTokenVaultFactory...');
