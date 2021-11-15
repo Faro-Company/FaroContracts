@@ -1,7 +1,7 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "./Interfaces/IWETH.sol";
+import "../utils.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
@@ -9,15 +9,8 @@ import "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgra
 
 
 contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable {
-    using Address for address;
 
-    /// -----------------------------------
-    /// -------- BASIC INFORMATION --------
-    /// -----------------------------------
-
-    /// @notice weth address
-    /// @notice will be replaced with stable coin
-    address public constant usdc = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
+    Utils utils = new Utils();
 
     /// -----------------------------------
     /// -------- TOKEN INFORMATION --------
@@ -27,7 +20,7 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable 
     address public token;
 
     /// @notice The project's funding address where stable coins are to be sent
-    address public projectFundingAddress;
+    address payable public projectFundingAddress;
 
     /// @notice the ERC721 token ID of the vault's token
     uint256 public id;
@@ -50,7 +43,7 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable 
     /// @notice a mapping of users to their funding amounts
     mapping(address => uint256) public funders;
 
-    uint remaining;
+    uint public remaining;
 
     /// @notice An event emitted when a listing starts
     event Start(address starter, uint256 value);
@@ -61,7 +54,13 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable 
     /// @notice An event emitted when end happens
     event End();
 
-    function initialize(address _token, address _projectFundingAddress, uint256 _id,
+    modifier isOwner() {
+        if (msg.sender != projectFundingAddress)
+            revert("Sender is not the project owner.");
+        _;
+    }
+
+    function initialize(address _token, address payable _projectFundingAddress, uint256 _id,
         uint256 _supply, uint256 _listingPrice, string memory _name, string memory _symbol,
         address[] memory funderAddresses, uint[] memory allocations) external initializer {
         // initialize inherited contracts
@@ -77,7 +76,7 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable 
 
         require(_createFundersMapping(funderAddresses, allocations) == _supply,
             "Given supply is not equal to the sum of allocations");
-        //_mint(projectFundingAddress, _supply);
+        _mint(projectFundingAddress, _supply);
         remaining = _supply;
     }
 
@@ -91,26 +90,8 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable 
         return total;
     }
 
-    // Send stablecoin.
-    function _sendStableCoin(address to, uint256 value) internal returns (bool){
-        // Try to transfer ETH to the given recipient.
-        if (!_attemptUSDCTransfer(to, value)) {
-            return false;
-        }
-        return true;
-    }
-
-    // USDC transfer internal method
-    function _attemptUSDCTransfer(address to, uint256 value) internal returns (bool)
-    {
-        // Here increase the gas limit a reasonable amount above the default, and try
-        // to send ETH to the recipient.
-        // NOTE: This might allow the recipient to attempt a limited reentrancy attack.
-        return IERC20(usdc).transferFrom(msg.sender, to, value);
-    }
-
     /// @notice Start the offering
-    function start() external payable {
+    function start() external payable isOwner {
         require(listingState == State.inactive, "Offering is already live");
         listingEnd = block.timestamp + listingPeriod;
         listingState = State.live;
@@ -127,8 +108,9 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable 
         require(remaining >= _amount, "Remaining is less than the amount that is bid");
         remaining -= _amount;
         funders[msg.sender] -= funders[msg.sender];
-        require(_sendStableCoin(projectFundingAddress, msg.value), "Could not send the funds to the project offerings address");
-        IERC20(token).transferFrom(address(this), msg.sender, _amount);
+        require(utils.sendStableCoin(msg.sender, projectFundingAddress,
+            msg.value), "Could not send the funds to the project offerings address");
+        IERC20(address(this)).transferFrom(address(this), msg.sender, _amount);
         emit Bid(msg.sender, _amount);
     }
 

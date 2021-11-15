@@ -1,24 +1,22 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import { Auction } from './EnglishAuction.sol';
+import {EnglishAuction} from './EnglishAuction.sol';
 
 contract AuctionFactory {
-    address[] public auctions;
 
-    event AuctionCreated(address auctionContract, address owner, uint numAuctions, address[] allAuctions);
+    mapping(uint256 => address) public auctions;
+    event AuctionCreated(address auctionContract, address owner);
 
-    function AuctionFactory() {
+    function createAuction(uint256 _bidIncrement, uint256 _auctionPeriodInSeconds,
+        address _token, uint256 _tokenId) public {
+        EnglishAuction newAuction = new EnglishAuction(msg.sender, _bidIncrement,
+            _auctionPeriodInSeconds, _token, _tokenId);
+        auctions[_tokenId] = address(newAuction);
+        emit AuctionCreated(address(newAuction), msg.sender);
     }
 
-    function createAuction(uint bidIncrement, uint startBlock, uint endBlock, string ipfsHash) {
-        Auction newAuction = new Auction(msg.sender, bidIncrement, startBlock, endBlock, ipfsHash);
-        auctions.push(newAuction);
-
-        AuctionCreated(newAuction, msg.sender, auctions.length, auctions);
-    }
-
-    function allAuctions() constant returns (address[]) {
-        return auctions;
+    function getAuction(uint256 _tokenId) public view returns (address) {
+        return auctions[_tokenId];
     }
 }

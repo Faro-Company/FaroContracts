@@ -29,7 +29,7 @@ contract OfferableERC721VaultFactory is Ownable, Pausable {
     /// address _token, address _projectFundingAddress, uint256 _id,
     //        uint256 _supply, uint256 _listingPrice, string memory _name, string memory _symbol,
     //        address[] memory funderAddresses, uint[] memory allocations
-    function mint(address _token, address _projectFundingAddress, uint256 _id, uint256 _supply, uint256 _listPrice,
+    function mint(address _token, address payable _projectFundingAddress, uint256 _id, uint256 _supply, uint256 _listPrice,
         string memory _name, string memory _symbol, address[] memory _funderAddresses,
         uint[] memory _allocations) external whenNotPaused returns(uint256) {
 

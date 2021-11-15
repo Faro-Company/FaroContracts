@@ -28,17 +28,6 @@ async function main () {
         allocations.push(fairAlloc);
     }
 
-    /*
-    const sampleContractAddress = "0x959922bE3CAee4b8Cd9a407cc3ac1C251C2007B1"
-    const SampleContract = await ethers.getContractFactory('sample');
-    const sampleContract = await SampleContract.attach(sampleContractAddress);
-    let sampleTx = await sampleContract.setMessage("Is it working? ");
-    console.log("Sample setter tx hash :", sampleTx.hash.toString());
-    await sampleTx.wait();
-    const res = await sampleContract.getMessage();
-    console.log("Sample message: ", res);
-    */
-
     const privateKeyString = '0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80';
     let wallet = new ethers.Wallet(privateKeyString, ethers.provider);
     let address = await wallet.getAddress();
@@ -69,10 +58,7 @@ async function main () {
     await approveTx.wait();
 
     const tx = await contractWithSigner.mint(tokenAddress, projectFundingAddress,
-        _id, _supply, _listPrice, movieName, tokenSymbol, funderAddresses, allocations,
-        {
-            gasLimit: 9000000
-        });
+        _id, _supply, _listPrice, movieName, tokenSymbol, funderAddresses, allocations);
     console.log("Tx hash %s", tx.hash.toString());
     await tx.wait();
 
