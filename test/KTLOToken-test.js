@@ -1,20 +1,29 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { accounts, contract } = require('@openzeppelin/test-environment');
-const { expectEvent, expectRevert } = require('@openzeppelin/test-helpers');
+const {BN, expectRevert } = require('@openzeppelin/test-helpers');
 
-const KtloToken = contract.fromArtifact()
+
+const KTLO_SUPPLY = new BN("2440000000000000000000000000");
+const NAME = "KTLO Studio Token";
+const SYMBOL = "KTLO";
+const WRONG_BALANCE = new BN("10");
+const TRANSFER_AMOUNT = new BN("10000000000");
+const DOUBLE_TRANSFER_AMOUNT = new BN("20000000000");
+const CHANGE = new BN("2439999999999999990000000000");
+const CHANGE_AFTER_SEND_TWICE = new BN("2439999999999999980000000000");
+
 // Start test block
 describe('KTLOToken', function () {
-    const [owner, deployer, user] = accounts;
-    const KTLO_SUPPLY = 244000000;
-    const NAME = "KTLO Studio Token";
-    const SYMBOL = "KTLO";
-    const WRONG_BALANCE = 10;
-    const TRANSFER_AMOUNT = 10000;
 
     before(async function () {
-        this.ktloToken = await KtloToken.new({ from: owner });
+        const accounts = await ethers.provider.listAccounts();
+        this.owner = accounts[0];
+        this.user = accounts[2];
+        this.user2 = accounts[3];
+        this.userSigner = await ethers.getSigner(this.user);
+        this.ownerSigner = await ethers.getSigner(this.owner);
+        const KtloToken = await ethers.getContractFactory('KTLOToken');
+        this.ktloToken = await KtloToken.deploy();
     });
     // Test case
     it('Name is KTLO Studio Token and symbol is KTLO', async function () {
@@ -22,44 +31,48 @@ describe('KTLOToken', function () {
         expect((await this.ktloToken.symbol())).to.equal(SYMBOL);
     });
 
-    it('Supply is 244000000', async function () {
-        expect((await this.ktloToken.totalSupply())).to.equal(KTLO_SUPPLY);
+    it('Supply is 2440000000000000000000000000', async function () {
+        expect((await this.ktloToken.totalSupply()).toString()).equal(KTLO_SUPPLY.toString());
     });
 
     it('Balance is in message sender', async function() {
-        expect((await this.ktloToken.balanceOf(owner).to.equal(KTLO_SUPPLY)));
-        expect((await this.ktloToken.balanceOf(owner).to.notEqual(WRONG_BALANCE)));
+        expect((await this.ktloToken.balanceOf(this.owner)).toString()).to.equal(KTLO_SUPPLY.toString());
+        expect((await this.ktloToken.balanceOf(this.owner)).toString()).to.not.equal(WRONG_BALANCE.toString());
     });
 
     it('Empty balance cannot send a value' , async function() {
-        await expectRevert(this.ktloToken.transfer(user, TRANSFER_AMOUNT, {fom: user}),
+        this.ktloToken.connect(this.userSigner);
+        await expectRevert(this.ktloToken.transferFrom(this.user, this.user2, TRANSFER_AMOUNT.toNumber()),
         'ERC20: transfer amount exceeds balance');
     });
 
     it('Non approved cannot withdraw', async function() {
-        await expectRevert(this.ktloToken.transferFrom(owner, user, TRANSFER_AMOUNT, {from:user}),
+        this.ktloToken.connect(this.userSigner);
+        await expectRevert(this.ktloToken.transferFrom(this.owner, this.user, TRANSFER_AMOUNT.toNumber()),
         'ERC20: transfer amount exceeds allowance'); });
 
     it('Sending amount is successful', async function() {
-       let tx = await this.ktloToken.transfer(user, TRANSFER_AMOUNT, {from: owner});
-       expectEvent(tx, 'Transfer', {sender: owner, recipient: user, amount: TRANSFER_AMOUNT});
-       await tx.wait();
-       expect((await this.ktloToken.balanceOf(owner).to.equal(KTLO_SUPPLY - TRANSFER_AMOUNT)));
-       expect((await this.ktloToken.balanceOf(user).to.equal(TRANSFER_AMOUNT)));
-       expect((await this.ktloToken.balanceOf(owner).to.notEqual(WRONG_BALANCE)));
-       expect((await this.ktloToken.balanceOf(user).to.notEqual(WRONG_BALANCE)));
+        this.ktloToken.connect(this.ownerSigner);
+        let approveTx = await this.ktloToken.approve(this.owner, DOUBLE_TRANSFER_AMOUNT.toNumber());
+        await approveTx.wait();
+        this.tx = await this.ktloToken.transferFrom(this.owner, this.user, TRANSFER_AMOUNT.toNumber());
+        await this.tx.wait();
+        expect((await this.ktloToken.balanceOf(this.owner)).toString()).to.equal(CHANGE.toString());
+        expect((await this.ktloToken.balanceOf(this.user)).toString()).to.equal(TRANSFER_AMOUNT.toString());
+        expect((await this.ktloToken.balanceOf(this.owner)).toString()).to.not.equal(WRONG_BALANCE.toString());
+        expect((await this.ktloToken.balanceOf(this.user)).toString()).to.not.equal(WRONG_BALANCE.toString());
     });
 
     it('Approved can withdraw', async function() {
-        let approveTx = await this.ktloToken.approve(user, TRANSFER_AMOUNT, {fom: owner});
-        expectEvent(approveTx, 'Approval', {owner: owner, spender: user, amount: TRANSFER_AMOUNT});
+        this.ktloToken.connect(this.ownerSigner);
+        let approveTx = await this.ktloToken.approve(this.user, TRANSFER_AMOUNT.toNumber());
         await approveTx.wait();
-        let tx = await this.ktloToken.transferFrom(owner, user, TRANSFER_AMOUNT, {from: user});
-        expectEvent(tx, 'Transfer', {sender: owner, recipient: user, amount: TRANSFER_AMOUNT});
+        this.ktloToken.connect(this.userSigner);
+        let tx = await this.ktloToken.transferFrom(this.owner, this.user, TRANSFER_AMOUNT.toNumber());
         await tx.wait();
-        expect((await this.ktloToken.balanceOf(owner).to.equal(KTLO_SUPPLY - 2 *TRANSFER_AMOUNT)));
-        expect((await this.ktloToken.balanceOf(user).to.equal(2 * TRANSFER_AMOUNT)));
-        expect((await this.ktloToken.balanceOf(owner).to.notEqual(WRONG_BALANCE)));
-        expect((await this.ktloToken.balanceOf(user).to.notEqual(WRONG_BALANCE)));
+        expect((await this.ktloToken.balanceOf(this.owner)).toString()).to.equal(CHANGE_AFTER_SEND_TWICE.toString());
+        expect((await this.ktloToken.balanceOf(this.user)).toString()).to.equal(DOUBLE_TRANSFER_AMOUNT.toString());
+        expect((await this.ktloToken.balanceOf(this.owner)).toString()).to.not.equal(WRONG_BALANCE.toString());
+        expect((await this.ktloToken.balanceOf(this.user)).toString()).to.not.equal(WRONG_BALANCE.toString());
     });
 });

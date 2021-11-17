@@ -22,6 +22,8 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable 
     /// @notice The project's funding address where stable coins are to be sent
     address payable public projectFundingAddress;
 
+    address public owner;
+
     /// @notice the ERC721 token ID of the vault's token
     uint256 public id;
 
@@ -34,9 +36,9 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable 
     /// @notice the unix timestamp end time of the token auction
     uint256 public listingEnd;
 
-    enum State { inactive, live, ended, overfunded}
+    enum OfferingState { inactive, live, ended, overfunded}
 
-    State public listingState;
+    OfferingState public listingState;
 
     uint constant minPrice = 1;
 
@@ -55,12 +57,16 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable 
     event End();
 
     modifier isOwner() {
-        if (msg.sender != projectFundingAddress)
+        if (msg.sender != owner)
             revert("Sender is not the project owner.");
         _;
     }
 
-    function initialize(address _token, address payable _projectFundingAddress, uint256 _id,
+    function getOfferingState() public view returns (OfferingState) {
+        return listingState;
+    }
+
+    function initialize(address _token, address payable _projectFundingAddress, address _owner,
         uint256 _supply, uint256 _listingPrice, string memory _name, string memory _symbol,
         address[] memory funderAddresses, uint[] memory allocations) external initializer {
         // initialize inherited contracts
@@ -69,11 +75,10 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable 
         // set storage variables
         token = _token;
         projectFundingAddress = _projectFundingAddress;
-        id = _id;
+        owner = _owner;
         listingPeriod = 3 days;
-        listingState = State.inactive;
+        listingState = OfferingState.inactive;
         listingPrice = _listingPrice;
-
         require(_createFundersMapping(funderAddresses, allocations) == _supply,
             "Given supply is not equal to the sum of allocations");
         _mint(projectFundingAddress, _supply);
@@ -92,9 +97,9 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable 
 
     /// @notice Start the offering
     function start() external payable isOwner {
-        require(listingState == State.inactive, "Offering is already live");
+        require(listingState == OfferingState.inactive, "Offering is already live");
         listingEnd = block.timestamp + listingPeriod;
-        listingState = State.live;
+        listingState = OfferingState.live;
         emit Start(msg.sender, msg.value);
     }
 
@@ -102,7 +107,7 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable 
     function bid(uint _amount) external payable {
         require(_amount > 0, "Bid amount cannot be zero");
         require(funders[msg.sender] >= _amount, "Bid is more than allocated for this address");
-        require(listingState == State.live, "Offering is not live");
+        require(listingState == OfferingState.live, "Offering is not live");
         require(_amount * listingPrice <= msg.value, "Funds sent for bid is less than the total capital required to buy the amount");
         require(block.timestamp > listingEnd, "Offering period is over");
         require(remaining >= _amount, "Remaining is less than the amount that is bid");
@@ -116,10 +121,10 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable 
 
     /// @notice an external function to end an auction after the timer has run out
     function end() external {
-        require(listingState == State.live, "Offering is already closed");
+        require(listingState == OfferingState.live, "Offering is already closed");
         require(block.timestamp >= listingEnd, "Listing period is not over");
         // transfer erc721 to winner
-        listingState = State.ended;
+        listingState = OfferingState.ended;
         emit End();
     }
 

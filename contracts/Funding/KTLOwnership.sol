@@ -15,11 +15,10 @@ contract KTLOwnership is ERC721{
     }
 
     function mint(address _to) external {
-        _safeMint(_to, 1);
+        _mint(_to, 1);
     }
 
-    function tokenURI(uint256 tokenId) public view override returns (string memory) {
-        require(_exists(tokenId), "ERC721Metadata: URI query for nonexistent token");
-        return string(abi.encodePacked(baseURI, tokenId));
+    function getAgreementURI() public view returns (string memory) {
+        return baseURI;
     }
 }

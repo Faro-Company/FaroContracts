@@ -57,8 +57,8 @@ async function main () {
     const approveTx = await erc721ContractWithSigner.setApprovalForAll(tokenVaultFactoryAddress, true);
     await approveTx.wait();
 
-    const tx = await contractWithSigner.mint(tokenAddress, projectFundingAddress,
-        _id, _supply, _listPrice, movieName, tokenSymbol, funderAddresses, allocations);
+    const tx = await contractWithSigner.mint(tokenAddress, projectFundingAddress, projectFundingAddress,
+        _supply, _listPrice, movieName, tokenSymbol, funderAddresses, allocations);
     console.log("Tx hash %s", tx.hash.toString());
     await tx.wait();
 

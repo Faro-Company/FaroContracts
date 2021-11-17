@@ -15,7 +15,7 @@ contract OfferableERC721VaultFactory is Ownable, Pausable {
     uint256 public vaultCount;
 
     /// @notice the mapping of vault number to vault contract
-    mapping(uint256 => address) public vaults;
+    address[] public vaults;
 
     event Mint(address indexed token, uint256 id, uint256 price, address vault, uint256 vaultId);
 
@@ -29,23 +29,28 @@ contract OfferableERC721VaultFactory is Ownable, Pausable {
     /// address _token, address _projectFundingAddress, uint256 _id,
     //        uint256 _supply, uint256 _listingPrice, string memory _name, string memory _symbol,
     //        address[] memory funderAddresses, uint[] memory allocations
-    function mint(address _token, address payable _projectFundingAddress, uint256 _id, uint256 _supply, uint256 _listPrice,
+    function mint(address _token, address payable _projectFundingAddress, address _owner,
+        uint256 _supply, uint256 _listPrice,
         string memory _name, string memory _symbol, address[] memory _funderAddresses,
         uint[] memory _allocations) external whenNotPaused returns(uint256) {
 
         OfferableERC721TokenVault vault = new OfferableERC721TokenVault();
-        vault.initialize(_token, _projectFundingAddress, _id, _supply, _listPrice,
+        vault.initialize(_token, _projectFundingAddress, _owner, _supply, _listPrice,
             _name, _symbol, _funderAddresses, _allocations);
         address vaultAddress = address(vault);
         IERC721(_token).safeTransferFrom(_projectFundingAddress, vaultAddress, _id);
-        vaults[vaultCount] = vaultAddress;
+        vaults.push(vaultAddress);
         vaultCount++;
-        emit Mint(_token, _id, _listPrice, vaultAddress, vaultCount);
+        emit Mint(_token, _listPrice, vaultAddress, vaultCount);
         return vaultCount - 1;
     }
 
     function getNumOfTokens() public view returns (uint256) {
         return vaultCount;
+    }
+
+    function getVault(uint256 vaultNum) public view returns (address) {
+        return vaults[vaultNum];
     }
 
     function pause() external onlyOwner {
