@@ -14,16 +14,17 @@ contract OfferableERC721VaultFactory is Ownable, Pausable {
     /// @notice the number of ERC721 vaults
     uint256 public vaultCount;
 
+    uint ID = 1;
+
     /// @notice the mapping of vault number to vault contract
     address[] public vaults;
 
-    event Mint(address indexed token, uint256 id, uint256 price, address vault, uint256 vaultId);
+    event Mint(address indexed token, uint256 price, address vault, uint256 vaultId);
 
     /// @notice the function to mint a new vault
     /// @param _name the desired name of the vault
     /// @param _symbol the desired sumbol of the vault
     /// @param _token the ERC721 token address to the NFT
-    /// @param _id the uint256 ID of the token
     /// @param _listPrice the initial price of the NFT
     /// @return the ID of the vault
     /// address _token, address _projectFundingAddress, uint256 _id,
@@ -38,7 +39,7 @@ contract OfferableERC721VaultFactory is Ownable, Pausable {
         vault.initialize(_token, _projectFundingAddress, _owner, _supply, _listPrice,
             _name, _symbol, _funderAddresses, _allocations);
         address vaultAddress = address(vault);
-        IERC721(_token).safeTransferFrom(_projectFundingAddress, vaultAddress, _id);
+        IERC721(_token).safeTransferFrom(_projectFundingAddress, vaultAddress, ID);
         vaults.push(vaultAddress);
         vaultCount++;
         emit Mint(_token, _listPrice, vaultAddress, vaultCount);

@@ -76,9 +76,9 @@ contract DutchAuction {
     }
 
     function startAuction() public isOwner atState(AuctionState.AuctionDeployed) {
-        auctionStopPrice = offerableOwnership.listingPrice();
-        maxTokensSold = offerableOwnership.remaining();
-        wallet = offerableOwnership.projectFundingAddress();
+        auctionStopPrice = offerableOwnership.getListingPrice();
+        maxTokensSold = offerableOwnership.getRemaining();
+        wallet = offerableOwnership.getProjectFundingAddress();
         startTime = block.timestamp;
         endTime = startTime + priceUpdateArray.length * 1 hours;
         auctionState = AuctionState.AuctionStarted;

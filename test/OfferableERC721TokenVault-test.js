@@ -9,6 +9,7 @@ const SYMBOL = "KTLOM";
 const TOKEN_URI = "HERE";
 const LIST_PRICE = 5;
 const PARTICIPANTS_NUM = 100;
+const DOLLAR_DISTRIBUTE_AMOUNT = 100000;
 
 
 describe('OfferableERC721TokenVault', function () {
@@ -24,7 +25,6 @@ describe('OfferableERC721TokenVault', function () {
 
         this.supply = 10000000;
 
-
         let distributeEtherTx;
 
         let participantWallet;
@@ -34,22 +34,34 @@ describe('OfferableERC721TokenVault', function () {
         this.funderAddresses = [];
         this.allocations = [];
 
+        const USDCMock = await ethers.getContractFactory('USDCMock');
+        this.usdcMock = await USDCMock.deploy();
+        await this.usdcMock.deployed();
 
-        const fairAlloc = Math.floor(this.supply / PARTICIPANTS_NUM);
+        let usdcApproveTx = await this.usdcMock.approve(this.user2, DOUBLE_TRANSFER_AMOUNT.toNumber());
+        await usdcApproveTx.wait();
+
+        const usdcSigner = this.ktlOwnershipToken.connect(this.distributor);
+        let usdcTransferTx;
+
+
+        this.fairAlloc = Math.floor(this.supply / PARTICIPANTS_NUM);
 
         for (let i = 0; i < PARTICIPANTS_NUM; i++) {
             participantWallet = ethers.Wallet.createRandom();
             participantAddress = participantWallet.getAddress();
             this.offeringParticipants.push(participantWallet);
             this.funderAddresses.push(participantAddress);
-            this.allocations.push(fairAlloc);
+            this.allocations.push(this.fairAlloc);
             distributeEtherTx = this.distributor.sendTransaction({
                 to: participantAddress,
                 value: ethers.utils.parseEther(1)
             });
+            usdcTransferTx = await usdcSigner.transferFrom(this.owner, participantAddress, DOLLAR_DISTRIBUTE_AMOUNT);
+            await usdcTransferTx.wait();
         }
 
-        this.supply = PARTICIPANTS_NUM * fairAlloc;
+        this.supply = PARTICIPANTS_NUM * this.fairAlloc;
 
         const KtlOwnershipToken = await ethers.getContractFactory('OfferableERC721TokenVault');
         this.ktlOwnershipToken = await KtlOwnershipToken.deploy(NAME, SYMBOL, TOKEN_URI);
@@ -76,31 +88,20 @@ describe('OfferableERC721TokenVault', function () {
 
         this.offeringAddress = await this.contractWithSigner.getVault(0);
         const OfferingVault = await ethers.getContractFactory('OfferableERC721TokenVault');
-        const offeringVault = await OfferingVault.attach(this.offeringAddress);
-        this.ownerSigner = offeringVault.connect(this.owner);
-        this.nonOwnerSigner = offeringVault.connect(this.distributor);
-
-        this.participantSigner = offeringVault.connect(this.offeringParticipants[0]);
-
-        const usdc = {
-            address: "0x68ec573C119826db2eaEA1Efbfc2970cDaC869c4",
-            abi: [
-                "function gimmeSome() external",
-                "function balanceOf(address _owner) public view returns (uint256 balance)",
-                "function transfer(address _to, uint256 _value) public returns (bool success)",
-            ],
-        };
-
-        const usdcContract = new ethers.Contract(usdc.address, usdc.abi, this.nonOwnerSigner);
-        const mintUSDCTx = await usdcContract.gimmeSome();
-        await mintUSDCTx.wait()
-
-
+        this.offeringVault = await OfferingVault.attach(this.offeringAddress);
+        this.ownerSigner = this.offeringVault.connect(this.owner);
+        this.nonOwnerSigner = this.offeringVault.connect(this.distributor);
+        this.participantSigner = this.offeringVault.connect(this.offeringParticipants[0]);
 
     });
 
     it('Cannot be started by non-owner', async function () {
-        await expectRevert(this.nonOwnerSigner.start());
+        await expectRevert(this.nonOwnerSigner.start(), 'Sender is not the project owner.');
+    });
+
+    it('Cannot make a bid on not started offering', async function() {
+        await expectRevert(this.participantSigner.bid(Math.floor(this.fairAlloc / 2), {value: 1000}),
+            'Offering is not live');
     });
 
     it('Can be started by the owner', async function() {
@@ -110,13 +111,99 @@ describe('OfferableERC721TokenVault', function () {
     })
 
     it('Cannot bid if not among funders', async function() {
-        await expectRevert(this.nonOwnerSigner.bid(100, {value: 1000}));
+        await expectRevert(this.nonOwnerSigner.bid(100, {value: 1000}),
+            'Address is not allowed to participate in the offering.');
     });
 
     it('Cannot bid more than allocation', async function () {
-        this.ktlOwnershipToken.connect(this.ownerSigner);
-        let tx = await this.ktlOwnershipToken.transferFrom(this.owner, this.user, TOKEN_ID);
-        await tx.wait();
-        expect(await this.ktlOwnershipToken.ownerOf(TOKEN_ID)).to.equal(this.user);
+        await expectRevert(this.participantSigner.bid(this.fairAlloc * 2, {value: 1000}),
+            'Bid is more than allocated for this address.');
     });
+
+    it('Cannot buy more by paying cheaper', async function() {
+       await expectRevert(this.participantSigner.bid(Math.floor(this.fairAlloc / 2), {value: 10}),
+           'Funds sent for bid is less than the total capital required to buy the amount.');
+    });
+
+    it('Cannot make a bid with 0 amount', async function() {
+        await expectRevert(this.participantSigner.bid(0, {value: 1000}),
+            'Bid amount cannot be zero.');
+    });
+
+    it('Cannot make a bid by paying 0', async function() {
+        await expectRevert(this.participantSigner.bid(Math.floor(this.fairAlloc / 2), {value: 0}),
+            'Funds sent cannot be zero.');
+    });
+
+    it('Can make a legit bid', async function() {
+        const amountToBuy = Math.floor(this.fairAlloc / 2);
+        const tx = await this.participantSigner.bid(amountToBuy, {value: 500});
+        await tx.wait();
+        expect((await this.particiapantSigner.getRemainingAllocation(
+            this.offeringParticipants[0])).toString()).to.equal((this.fairAlloc - amountToBuy).toString());
+    });
+
+    it('Can make a legit bid again without finishing the allocation', async function() {
+        const amountToBuy = Math.floor(this.fairAlloc / 4);
+        const previouslyBoughtAmount = Math.floor(this.fairAlloc / 2);
+        const tx = await this.participantSigner.bid(amountToBuy, {value: 250});
+        await tx.wait();
+        expect((await this.participantSigner.getRemainingAllocation(
+            this.offeringParticipants[0])).toString()).to.equal((this.fairAlloc - (
+                amountToBuy + previouslyBoughtAmount)).toString());
+    });
+
+    it('Cant buy more than allocated after successful bids', async function() {
+        const amountToBuy = Math.floor(this.fairAlloc / 2);
+        await expectRevert(this.participantSigner.bid(amountToBuy, {value: 1000}),
+            'Bid is more than allocated for this address.');
+    });
+
+    it('Non-owner cannot pause', async function() {
+        await expectRevert(this.participantSigner.pause(),
+            'Sender is not the project owner.');
+    });
+
+    it('Owner can pause', async function() {
+        const tx = await this.ownerSigner.pause();
+        await tx.wait();
+        expect((await this.participantSigner.paused())).is.true;
+    });
+
+    it('Cant buy when paused', async function() {
+        const amountToBuy = Math.floor(this.fairAlloc / 8);
+        await expectRevert(this.participantSigner.bid(amountToBuy, {value: 1000}),
+            'The bid is paused.');
+    });
+
+    it('Non-owner cannot unpause when paused', async function() {
+        await expectRevert(this.participantSigner.unpause(),
+            'Sender is not the project owner.');
+    });
+
+    it('Owner can unpause', async function() {
+        const tx = await this.ownerSigner.unpause();
+        await tx.wait();
+        expect((await this.participantSigner.paused())).is.false;
+    });
+
+    it('Bidding finishes when allocations are all bought', async function() {
+        let amountToBid, participantSigner, tx;
+        for (let participant in this.offeringParticipants) {
+            participantSigner = this.offeringVault.connect(participant);
+            amountToBid = await participantSigner.getRemainingAllocation(participant.address);
+            tx = await participantSigner.bid(amountToBid, {value: 250});
+            await tx.wait();
+        }
+        expect(await participantSigner.getOfferingState()).to.equal(2);
+    });
+
+    it('Cannot bid on ended offering', async function() {
+        const amountToBuy = Math.floor(this.fairAlloc / 2);
+        await expectRevert(this.participantSigner.bid(amountToBuy, {value: 500}),
+            'Offering is not live.');
+    });
+
+
+
 });

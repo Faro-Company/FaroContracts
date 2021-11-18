@@ -3,6 +3,7 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
+
 contract Utils {
 
     /// @notice usdc address
@@ -25,6 +26,10 @@ contract Utils {
         // to send ETH to the recipient.
         // NOTE: This might allow the recipient to attempt a limited reentrancy attack.
         return IERC20(USDC).transferFrom(from, to, value);
+    }
+
+    function getUSDBalance(address source) public view returns(uint256) {
+        return IERC20(USDC).balanceOf(source);
     }
 
 }
