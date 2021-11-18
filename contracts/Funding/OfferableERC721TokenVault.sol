@@ -7,7 +7,6 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgradeable.sol";
-import "./RevenueDistributor.sol";
 
 
 contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable, Pausable {
@@ -50,8 +49,6 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable,
     uint256 private totalValue;
 
     bool private overFunded;
-
-    address private revenueDistributor;
 
     /// @notice An event emitted when a listing starts
     event Start(address starter, uint256 value);
@@ -107,10 +104,6 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable,
 
     function getFunderAddresses() public view returns(address[] memory) {
         return funderAddresses;
-    }
-
-    function getRevenueDistributor() public view returns(address) {
-        return revenueDistributor;
     }
 
     function isOverFunded() public view returns(bool) {
@@ -191,7 +184,6 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable,
     function _end() internal {
         require(listingState == OfferingState.live, "Offering is already closed.");
         listingState = OfferingState.ended;
-        revenueDistributor = address(new RevenueDistributor(address(this)));
         emit End();
     }
 
