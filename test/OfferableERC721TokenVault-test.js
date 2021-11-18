@@ -37,11 +37,10 @@ describe('OfferableERC721TokenVault', function () {
         const USDCMock = await ethers.getContractFactory('USDCMock');
         this.usdcMock = await USDCMock.deploy();
         await this.usdcMock.deployed();
-
-        let usdcApproveTx = await this.usdcMock.approve(this.user2, DOUBLE_TRANSFER_AMOUNT.toNumber());
+        let usdcApproveTx = await this.usdcMock.approve(this.user2, DOLLAR_DISTRIBUTE_AMOUNT * PARTICIPANTS_NUM);
         await usdcApproveTx.wait();
 
-        const usdcSigner = this.ktlOwnershipToken.connect(this.distributor);
+        const usdcSigner = this.usdcMock.connect(this.distributor);
         let usdcTransferTx;
 
 
@@ -55,21 +54,23 @@ describe('OfferableERC721TokenVault', function () {
             this.allocations.push(this.fairAlloc);
             distributeEtherTx = this.distributor.sendTransaction({
                 to: participantAddress,
-                value: ethers.utils.parseEther(1)
+                value: ethers.utils.parseEther("1")
             });
             usdcTransferTx = await usdcSigner.transferFrom(this.owner, participantAddress, DOLLAR_DISTRIBUTE_AMOUNT);
             await usdcTransferTx.wait();
         }
-
+        console.log("USDCs distributed");
         this.supply = PARTICIPANTS_NUM * this.fairAlloc;
 
-        const KtlOwnershipToken = await ethers.getContractFactory('OfferableERC721TokenVault');
+        const KtlOwnershipToken = await ethers.getContractFactory('KTLOwnership');
         this.ktlOwnershipToken = await KtlOwnershipToken.deploy(NAME, SYMBOL, TOKEN_URI);
         await this.ktlOwnershipToken.deployed();
 
         const erc721ContractWithSigner = this.ktlOwnershipToken.connect(this.ownerSigner);
         const mintTx = await this.ktlOwnershipToken.mint(this.user);
         await mintTx.wait();
+
+        console.log("Ownership token minted");
 
         const ERCVaultFactory = await ethers.getContractFactory('OfferableERC721VaultFactory');
         this.ercVaultFactory = await ERCVaultFactory.deploy();
@@ -80,11 +81,14 @@ describe('OfferableERC721TokenVault', function () {
         const approveTx = await erc721ContractWithSigner.setApprovalForAll(tokenVaultFactoryAddress, true);
         await approveTx.wait();
 
+        console.log('Approval given to factory');
+
         this.contractWithSigner = this.ercVaultFactory.connect(this.ownerSigner);
 
-        const tx = await contractWithSigner.mint(this.ktlOwnershipToken.address, this.user, this.owner,
+        const tx = await this.contractWithSigner.mint(this.ktlOwnershipToken.address, this.user, this.owner,
             this.supply, LIST_PRICE, NAME, SYMBOL, this.funderAddresses, this.allocations);
         await tx.wait();
+        console.log("Offering contract created");
 
         this.offeringAddress = await this.contractWithSigner.getVault(0);
         const OfferingVault = await ethers.getContractFactory('OfferableERC721TokenVault');

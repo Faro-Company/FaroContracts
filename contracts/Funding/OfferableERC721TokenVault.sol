@@ -41,7 +41,6 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable,
     /// @notice a mapping of users to their funding amounts
     mapping(address => uint256) private funders;
 
-    address[] private funderAddresses;
 
     uint256 private remaining;
     uint256 private supply;
@@ -90,22 +89,6 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable,
         return remaining;
     }
 
-    function getSupply() public view returns(uint256) {
-        return supply;
-    }
-
-    function getTotalBoughtAmount() public view returns (uint256) {
-        return supply - remaining;
-    }
-
-    function getTotalFunding() public view returns (uint256) {
-        return totalFunding;
-    }
-
-    function getFunderAddresses() public view returns(address[] memory) {
-        return funderAddresses;
-    }
-
     function isOverFunded() public view returns(bool) {
         return overFunded;
     }
@@ -131,18 +114,14 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable,
             "Given supply is not equal to the sum of allocations");
         _mint(projectFundingAddress, _supply);
         remaining = _supply;
-        supply = _supply;
         totalValue = _supply * listingPrice;
     }
 
     function _createFundersMapping(address[] memory _funderAddresses, uint[] memory allocations) private returns (uint) {
         require(_funderAddresses.length == allocations.length, "Funders and allocation array sizes cannot be different");
         uint total = 0;
-        address funderAddress;
         for (uint i = 0; i < _funderAddresses.length; i++) {
-            funderAddress = _funderAddresses[i];
-            funders[funderAddress] = allocations[i];
-            funderAddresses.push(funderAddress);
+            funders[_funderAddresses[i]] = allocations[i];
             total += allocations[i];
         }
         return total;

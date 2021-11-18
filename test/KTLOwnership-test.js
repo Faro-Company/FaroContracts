@@ -38,9 +38,8 @@ describe('KTLOwnership', function () {
 
   it('Non-owner cannot send it.', async function () {
     this.ktlOwnershipToken.connect(this.user);
-    let tx = await this.ktlOwnershipToken.transferFrom(this.user, this.user2, TOKEN_ID);
-    await tx.wait();
-    await expectRevert(this.ktlOwnershipToken.ownerOf(TOKEN_ID));
+    await expectRevert(this.ktlOwnershipToken.transferFrom(this.user, this.user2, TOKEN_ID),
+        'ERC721: transfer of token that is not own');
   });
 
   it('Owner can send it successfully.', async function () {
