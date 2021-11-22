@@ -6,6 +6,8 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgradeable.sol";
 import "./KTLOFractional.sol";
+import "../DutchAuction/DutchAuction.sol";
+import "../DutchAuction/DutchAuctionFactory.sol";
 
 
 contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeable {
@@ -149,8 +151,7 @@ contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeab
     }
 
     /// @notice an external function to bid on purchasing the vaults NFT.
-    function bid(uint _amount, uint256 _value) external payable timeTransition {
-        require(!paused(), "The bid is paused.");
+    function bid(uint _amount, uint256 _value) external payable whenNotPaused timeTransition {
         require(_value > 0, "Funds sent cannot be zero.");
         require(_amount > 0, "Bid amount cannot be zero.");
         require(funders[msg.sender] > 0, "Address is not allowed to participate in the offering.");
@@ -186,5 +187,13 @@ contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeab
 
     function unpause() external isOwner {
         _unpause();
+    }
+
+    function authorizeDutchAuction(uint256 newSupply, uint256[] memory _priceUpdateArray) internal isOwner whenNotPaused {
+        require(listingState == OfferingState.ended, "Offering is still live, cannot start the Dutch auction");
+        DutchAuctionFactory factory = new DutchAuctionFactory();
+        DutchAuction auction = factory.createAuction(listingPrice, newSupply,
+            projectFundingAddress, address(fraction), _priceUpdateArray);
+        fractional.mint(newSupply, address(auction));
     }
 }

@@ -18,7 +18,6 @@ contract DutchAuction {
     uint constant HOURS_IN_MILLISECS = 3600000;
     uint constant MAX_TIME_TICKS_ALLOWED = 1440;
 
-    OfferableERC721TokenVault public immutable offerableOwnership;
     uint maxTokensSold;
     uint remaining;
 
@@ -34,6 +33,7 @@ contract DutchAuction {
     mapping (address => uint) private bids;
 
     AuctionState public auctionState;
+    address private fractional;
 
     enum AuctionState {
         AuctionDeployed,
@@ -66,19 +66,20 @@ contract DutchAuction {
         _;
     }
 
-    constructor(address vaultToken, uint[] memory _priceUpdateArray) {
+    constructor(uint256 _stopPrice, uint256 _maxTokensSold, address projectFundingAddress, address _fractional,
+        uint[] memory _priceUpdateArray) {
         require(_priceUpdateArray.length <= MAX_TIME_TICKS_ALLOWED, "Too large price update array");
         priceUpdateArray = _priceUpdateArray;
-        offerableOwnership = OfferableERC721TokenVault(vaultToken);
         auctionCurrentPrice = priceUpdateArray[0];
+        auctionStopPrice = _stopPrice;
+        maxTokensSold = _maxTokensSold;
         auctionState = AuctionState.AuctionDeployed;
         remaining = maxTokensSold;
+        wallet = projectFundingAddress;
+        fractional = _fractional;
     }
 
     function startAuction() public isOwner atState(AuctionState.AuctionDeployed) {
-        auctionStopPrice = offerableOwnership.getListingPrice();
-        maxTokensSold = offerableOwnership.getRemaining();
-        wallet = offerableOwnership.getProjectFundingAddress();
         startTime = block.timestamp;
         endTime = startTime + priceUpdateArray.length * 1 hours;
         auctionState = AuctionState.AuctionStarted;
@@ -90,15 +91,29 @@ contract DutchAuction {
         return auctionCurrentPrice;
     }
 
-    function bid(uint256 _amount) public payable atState(
+    function sendStableCoin(address from, address to, uint256 value) internal returns (bool) {
+        // Try to transfer USDC to the given recipient.
+        if (!_attemptUSDCTransfer(from, to, value)) {
+            return false;
+        }
+        return true;
+    }
+
+    // USDC transfer internal method
+    function _attemptUSDCTransfer(address from, address to, uint256 value) internal returns (bool)
+    {
+        return USDC.transferFrom(from, to, value);
+    }
+
+    function bid(uint256 _amount, uint256 _value) public payable atState(
         AuctionState.AuctionStarted) isNotOwner updateAuctionState {
-        require(msg.value >= auctionCurrentPrice, "Bid value is less than current price.");
+        require(_value >= auctionCurrentPrice, "Bid value is less than current price.");
         require(_amount <= remaining, "Bid amount is higher than remaining amount.");
-        remaining = remaining - _amount;
-        bids[msg.sender] += msg.value;
-        require(utils.sendStableCoin(msg.sender, wallet,
-            msg.value), "Could not send the funds to the project offerings address.");
-        IERC20(address(offerableOwnership)).transferFrom(wallet, msg.sender, _amount);
+        remaining -= _amount;
+        bids[msg.sender] += _value;
+        require(sendStableCoin(msg.sender, wallet, _value),
+            "Could not send the funds to the project offerings address.");
+        IERC20(fractional).transferFrom(address(this), msg.sender, _amount);
         emit Bid(msg.sender, _amount);
         if (remaining == 0) {
             finalizeAuction();
@@ -111,7 +126,8 @@ contract DutchAuction {
 
     function withdraw() public atState(AuctionState.AuctionEnded) {
         require(bids[msg.sender] > 0, "Not among bidders.");
-        require(utils.sendStableCoin(wallet, msg.sender, bids[msg.sender] - auctionCurrentPrice),
+        require(sendStableCoin(wallet, msg.sender, bids[msg.sender] - auctionCurrentPrice),
             "Could not send change to the bidding participant.");
+        bids[msg.sender] = 0;
     }
 }
