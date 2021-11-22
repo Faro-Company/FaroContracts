@@ -22,12 +22,19 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
  * @type import('hardhat/config').HardhatUserConfig
  */
 module.exports = {
-  solidity: "0.8.4",
+  solidity: {
+    version: "0.8.4",
+    optimizer: {enabled: !process.env.DEBUG},
+  },
   networks: {
     ropsten: {
       url: process.env.ROPSTEN_URL || "",
       accounts:
         process.env.PRIVATE_KEY !== undefined ? [process.env.PRIVATE_KEY] : [],
+    },
+    forking: {
+      url: "https://eth-mainnet.alchemyapi.io/v2/wno14CpI8Et2hP6pWmcHpZZsO_nLaYQW",
+      blockNumber: 11095000
     }
   },
   gasReporter: {

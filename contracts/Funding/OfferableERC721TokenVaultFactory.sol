@@ -3,21 +3,22 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
-
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
-
 import "./OfferableERC721TokenVault.sol";
+import "./Proxy.sol";
 
 
 contract OfferableERC721VaultFactory is Ownable, Pausable {
     /// @notice the number of ERC721 vaults
     uint256 public vaultCount;
 
-    uint ID = 1;
+    uint private ID = 1;
 
     /// @notice the mapping of vault number to vault contract
     address[] public vaults;
+
+    address logic = address(new OfferableERC721TokenVault());
 
     event Mint(address indexed token, uint256 price, address vault, uint256 vaultId);
 
@@ -31,18 +32,29 @@ contract OfferableERC721VaultFactory is Ownable, Pausable {
     //        uint256 _supply, uint256 _listingPrice, string memory _name, string memory _symbol,
     //        address[] memory funderAddresses, uint[] memory allocations
     function mint(address _token, address payable _projectFundingAddress, address _owner,
-        uint256 _supply, uint256 _listPrice,
+        uint256 _supply, uint256 _listPrice, uint _listingPeriod,
         string memory _name, string memory _symbol, address[] memory _funderAddresses,
-        uint[] memory _allocations) external whenNotPaused returns(uint256) {
+        uint256[] memory _allocations) external whenNotPaused returns(uint256) {
 
-        OfferableERC721TokenVault vault = new OfferableERC721TokenVault();
-        vault.initialize(_token, _projectFundingAddress, _owner, _supply, _listPrice,
-            _name, _symbol, _funderAddresses, _allocations);
-        address vaultAddress = address(vault);
-        IERC721(_token).safeTransferFrom(_projectFundingAddress, vaultAddress, ID);
-        vaults.push(vaultAddress);
+        bytes memory _initializationCalldata = abi.encodeWithSignature(
+            "initialize(address,address,address,uint256,uint256,uint256,string,string,address[],uint256[])",
+            _token,
+            _projectFundingAddress,
+            _owner,
+            _supply,
+            _listPrice,
+            _listingPeriod,
+            _name,
+            _symbol,
+            _funderAddresses,
+            _allocations
+        );
+
+        address vault = address(new InitializedProxy(logic, _initializationCalldata));
+        IERC721(_token).safeTransferFrom(_projectFundingAddress, vault, ID);
+        vaults.push(vault);
         vaultCount++;
-        emit Mint(_token, _listPrice, vaultAddress, vaultCount);
+        emit Mint(_token, _listPrice, vault, vaultCount);
         return vaultCount - 1;
     }
 

@@ -5,7 +5,7 @@ pragma solidity ^0.8.0;
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 
-contract KTLOwnership is ERC721{
+contract KTLOwnership is ERC721 {
 
     string baseURI;
 

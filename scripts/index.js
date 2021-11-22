@@ -9,7 +9,7 @@ async function main () {
     const movieName = "KTLO Journey Starting";
     const tokenSymbol = "KTLOM";
     const tokenUri = "here";
-    const _id = 1;
+    const _listingPeriod = 30;
     let _supply = 10000000;
     const _listPrice = 5;
     const participantsNum = 100;
@@ -58,7 +58,7 @@ async function main () {
     await approveTx.wait();
 
     const tx = await contractWithSigner.mint(tokenAddress, projectFundingAddress, projectFundingAddress,
-        _supply, _listPrice, movieName, tokenSymbol, funderAddresses, allocations);
+        _supply, _listPrice, _listingPeriod, movieName, tokenSymbol, funderAddresses, allocations);
     console.log("Tx hash %s", tx.hash.toString());
     await tx.wait();
 

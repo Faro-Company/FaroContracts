@@ -1,24 +1,21 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "../utils.sol";
-import "@openzeppelin/contracts/security/Pausable.sol";
+import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
-import "@openzeppelin/contracts-upgradeable/token/ERC20/ERC20Upgradeable.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgradeable.sol";
+import "./KTLOFractional.sol";
 
 
-contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable, Pausable {
+contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeable {
 
-    Utils utils = new Utils();
-
-    /// -----------------------------------
-    /// -------- TOKEN INFORMATION --------
-    /// -----------------------------------
+    IERC20 public constant USDC = IERC20(0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e);
 
     /// @notice the ERC721 token address of the vault's token
     address private token;
+
+    KTLOFractional private fractional;
 
     /// @notice The project's funding address where stable coins are to be sent
     address payable private projectFundingAddress;
@@ -43,14 +40,11 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable,
 
 
     uint256 private remaining;
-    uint256 private supply;
     uint256 private totalFunding;
     uint256 private totalValue;
 
-    bool private overFunded;
-
     /// @notice An event emitted when a listing starts
-    event Start(address starter, uint256 value);
+    event Start(address starter);
 
     /// @notice An event emitted when bid happens
     event Bid(address bidder, uint256 amount);
@@ -67,6 +61,7 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable,
     }
 
     modifier timeTransition() {
+        require(listingState == OfferingState.live, "Offering is not live.");
         if (block.timestamp > listingEnd || remaining == 0) {
             _end();
         }
@@ -89,37 +84,38 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable,
         return remaining;
     }
 
-    function isOverFunded() public view returns(bool) {
-        return overFunded;
-    }
-
     function getListingPrice() public view returns(uint256) {
         return listingPrice;
     }
 
+    function getFractionalBalance(address funder) public view returns(uint256) {
+        return fractional.balanceOf(funder);
+    }
+
     function initialize(address _token, address payable _projectFundingAddress, address _owner,
-        uint256 _supply, uint256 _listingPrice, string memory _name, string memory _symbol,
+        uint256 _supply, uint256 _listingPrice, uint _listingPeriod, string memory _name, string memory _symbol,
         address[] memory _funderAddresses, uint256[] memory allocations) external initializer {
         // initialize inherited contracts
-        __ERC20_init(_name, _symbol);
         __ERC721Holder_init();
+        fractional = new KTLOFractional(_name, _symbol, _supply, address(this));
         // set storage variables
         token = _token;
         projectFundingAddress = _projectFundingAddress;
         owner = _owner;
-        listingPeriod = 3 days;
+        listingPeriod = _listingPeriod * 1 days;
         listingState = OfferingState.inactive;
         listingPrice = _listingPrice;
         require(_createFundersMapping(_funderAddresses, allocations) == _supply,
             "Given supply is not equal to the sum of allocations");
-        _mint(projectFundingAddress, _supply);
         remaining = _supply;
         totalValue = _supply * listingPrice;
     }
 
-    function _createFundersMapping(address[] memory _funderAddresses, uint[] memory allocations) private returns (uint) {
-        require(_funderAddresses.length == allocations.length, "Funders and allocation array sizes cannot be different");
-        uint total = 0;
+    function _createFundersMapping(address[] memory _funderAddresses,
+        uint256[] memory allocations) internal returns (uint256) {
+        require(_funderAddresses.length == allocations.length,
+            "Funders and allocation array sizes cannot be different");
+        uint256 total;
         for (uint i = 0; i < _funderAddresses.length; i++) {
             funders[_funderAddresses[i]] = allocations[i];
             total += allocations[i];
@@ -128,35 +124,48 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable,
     }
 
     /// @notice Start the offering
-    function start() external payable isOwner {
+    function start() external isOwner {
         require(listingState == OfferingState.inactive, "Offering is already live");
         listingEnd = block.timestamp + listingPeriod;
         listingState = OfferingState.live;
-        emit Start(msg.sender, msg.value);
+        emit Start(msg.sender);
     }
 
-    /// @notice an external function to bid on purchasing the vaults NFT. The msg.value is the bid amount
-    function bid(uint _amount) external payable timeTransition {
-        require(listingState == OfferingState.live, "Offering is not live.");
-            require(!paused(), "The bid is paused.");
-        require(msg.value > 0, "Funds sent cannot be zero.");
+    function sendStableCoin(address from, address to, uint256 value) internal returns (bool) {
+        // Try to transfer USDC to the given recipient.
+        if (!_attemptUSDCTransfer(from, to, value)) {
+            return false;
+        }
+        return true;
+    }
+
+    // USDC transfer internal method
+    function _attemptUSDCTransfer(address from, address to, uint256 value) internal returns (bool)
+    {
+        // Here increase the gas limit a reasonable amount above the default, and try
+        // to send ETH to the recipient.
+        // NOTE: This might allow the recipient to attempt a limited reentrancy attack.
+        return USDC.transferFrom(from, to, value);
+    }
+
+    /// @notice an external function to bid on purchasing the vaults NFT.
+    function bid(uint _amount, uint256 _value) external payable timeTransition {
+        require(!paused(), "The bid is paused.");
+        require(_value > 0, "Funds sent cannot be zero.");
         require(_amount > 0, "Bid amount cannot be zero.");
         require(funders[msg.sender] > 0, "Address is not allowed to participate in the offering.");
         require(funders[msg.sender] >= _amount, "Bid is more than allocated for this address.");
-        require(_amount * listingPrice <= msg.value, "Funds sent for bid is less than the total capital required to buy the amount.");
+        require(_amount * listingPrice <= _value, "Funds sent for bid is less than the total capital required to buy the amount.");
         require(remaining >= _amount, "Remaining is less than the amount that is bid.");
         remaining -= _amount;
-        funders[msg.sender] -= funders[msg.sender];
-        require(utils.sendStableCoin(msg.sender, projectFundingAddress,
-            msg.value), "Could not send the funds to the project offerings address.");
-        totalFunding += msg.value;
-        IERC20(address(this)).transferFrom(address(this), msg.sender, _amount);
+        funders[msg.sender] -= _amount;
+        require(sendStableCoin(msg.sender, projectFundingAddress, _value),
+            "Could not send the funds to the project offerings address.");
+        totalFunding += _value;
+        fractional.transfer(msg.sender, _amount);
         emit Bid(msg.sender, _amount);
         if (remaining == 0) {
             _end();
-        }
-        if (totalFunding > totalValue) {
-            overFunded = true;
         }
     }
 
@@ -177,13 +186,5 @@ contract OfferableERC721TokenVault is ERC20Upgradeable, ERC721HolderUpgradeable,
 
     function unpause() external isOwner {
         _unpause();
-    }
-
-    function _msgData() internal view override(Context, ContextUpgradeable) returns (bytes memory) {
-        return ContextUpgradeable._msgData();
-    }
-
-    function _msgSender() internal view override(Context, ContextUpgradeable) returns (address) {
-        return ContextUpgradeable._msgSender();
     }
 }
