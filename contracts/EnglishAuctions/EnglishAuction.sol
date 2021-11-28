@@ -15,6 +15,7 @@ contract EnglishAuction {
     uint256 public startTime;
     uint256 public endTime;
     uint256 auctionPeriodInSeconds;
+    uint256 public floorPrice;
     
     /// @notice the ERC721 token address of the vault's token
     ERC721 public token;
@@ -73,7 +74,7 @@ contract EnglishAuction {
     }
 
     constructor(address _owner, uint _bidIncrement, uint256 _auctionPeriodInSeconds,
-        address _token, uint256 _tokenId) {
+        address _token, uint256 _tokenId, uint256 _floorPrice) {
         require(IERC721(_token).ownerOf(_tokenId) == _owner, "Auction can only be deployed by the owner of the token");
         owner = _owner;
         bidIncrement = _bidIncrement;
@@ -82,6 +83,7 @@ contract EnglishAuction {
         tokenId = _tokenId;
         _escrow(owner, tokenId);
         auctionState = AuctionState.AuctionDeployed;
+        floorPrice = _floorPrice;
     }
 
     function _escrow(address _owner, uint256 _tokenId) internal {
@@ -101,7 +103,7 @@ contract EnglishAuction {
 
     function bid() public payable onlyAfterStart onlyBeforeEnd onlyNotCancelled onlyNotOwner returns (bool success) {
         // reject payments of 0 ETH
-       require(msg.value > 0, "Cannot send bid with 0 value.");
+       require(msg.value > floorPrice, "Cannot send bid less than floor price.");
 
         // calculate the user's total bid based on the current amount they've sent to the contract
         // plus whatever has been sent with this transaction
@@ -154,14 +156,14 @@ contract EnglishAuction {
         return true;
     }
 
-    function withdrawNFT() public onlyEndedOrCancelled {
+    function withdrawNFT() public external onlyEndedOrCancelled {
         if (msg.sender == highestBidder)
             token.transferFrom(address(this), msg.sender, tokenId);
     }
-    function withdraw() public onlyEndedOrCancelled returns (bool success)
+    function withdraw() public external onlyEndedOrCancelled returns (bool success)
     {
         address withdrawalAccount;
-        uint withdrawalAmount;
+        uint256 withdrawalAmount;
 
         if (cancelled) {
             // if the auction was cancelled, everyone should simply be allowed to withdraw their funds
@@ -189,7 +191,7 @@ contract EnglishAuction {
                 withdrawalAmount = bids[withdrawalAccount];
             }
         }
-        if (withdrawalAmount == 0) revert("Withdrawal amount cannot be 0");
+        require(withdrawalAmount > 0, "Withdrawal amount cannot be 0");
         bids[withdrawalAccount] -= withdrawalAmount;
         // send the funds
         require(utils.sendStableCoin(address(this), withdrawalAccount,

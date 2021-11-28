@@ -11,12 +11,12 @@ const LIST_PRICE = 5;
 const LISTING_PERIOD = 30;
 
 const ACCOUNTS_NUM = 20;
-const PARTICIPANTS_NUM = 17
+const PARTICIPANTS_NUM = 17;
 const DOLLAR_DISTRIBUTE_AMOUNT = 10000000000;
-const BUY_AMOUNT = 500
+const BUY_AMOUNT = 500;
 
 
-describe('OfferableERC721TokenVault', function () {
+describe("OfferableERC721TokenVault", function () {
 
     before(async function () {
         const accounts = await ethers.provider.listAccounts();

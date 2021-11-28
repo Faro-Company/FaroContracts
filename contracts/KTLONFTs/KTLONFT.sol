@@ -1,5 +1,7 @@
 pragma solidity ^0.8.0;
 
+import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
+
 contract KTLONFT is ERC721 {
 
     string baseURI;
@@ -12,8 +14,8 @@ contract KTLONFT is ERC721 {
         contentID = _contentID;
     }
 
-    function mint(address _to) external {
-        _mint(_to, 1);
+    function mint(address _to, uint256 _tokenID) external {
+        _mint(_to, _tokenID);
     }
 
     function getAgreementURI() public view returns (string memory) {

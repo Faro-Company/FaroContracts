@@ -187,4 +187,13 @@ contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeab
     function unpause() external isOwner {
         _unpause();
     }
+
+    function getTokenAddress() public view returns (address) {
+        return address(fractional);
+    }
+
+    function balanceOfFractional(address _holder) public view returns (uint256) {
+        return fractional.balanceOf(_holder);
+    }
+
 }
