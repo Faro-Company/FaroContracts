@@ -11,12 +11,13 @@ import "./Proxy.sol";
 
 contract OfferableERC721VaultFactory is Ownable, Pausable {
     /// @notice the number of ERC721 vaults
-    uint256 public vaultCount;
+    uint256 private vaultCount;
 
     uint private ID = 1;
 
     /// @notice the mapping of vault number to vault contract
     address[] public vaults;
+     
 
     address logic = address(new OfferableERC721TokenVault());
 
@@ -34,7 +35,7 @@ contract OfferableERC721VaultFactory is Ownable, Pausable {
     function mint(address _token, address payable _projectFundingAddress, address _owner,
         uint256 _supply, uint256 _listPrice, uint _listingPeriod,
         string memory _name, string memory _symbol, address[] memory _funderAddresses,
-        uint256[] memory _allocations) external whenNotPaused returns(uint256) {
+        uint256[] memory _allocations) external onlyOwner whenNotPaused returns(uint256) {
 
         bytes memory _initializationCalldata = abi.encodeWithSignature(
             "initialize(address,address,address,uint256,uint256,uint256,string,string,address[],uint256[])",
@@ -56,6 +57,10 @@ contract OfferableERC721VaultFactory is Ownable, Pausable {
         vaultCount++;
         emit Mint(_token, _listPrice, vault, vaultCount);
         return vaultCount - 1;
+    }
+
+    function getLastVault() public view returns (address) {
+        return vaults[vaultCount - 1];
     }
 
     function getNumOfTokens() public view returns (uint256) {
