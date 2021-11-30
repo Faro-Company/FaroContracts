@@ -1,5 +1,5 @@
 require("dotenv").config();
-require('@nomiclabs/hardhat-ethers');
+require("@nomiclabs/hardhat-ethers");
 require("@nomiclabs/hardhat-etherscan");
 require("@nomiclabs/hardhat-waffle");
 require("hardhat-gas-reporter");
@@ -24,7 +24,7 @@ task("accounts", "Prints the list of accounts", async (taskArgs, hre) => {
 module.exports = {
   solidity: {
     version: "0.8.4",
-    optimizer: {enabled: !process.env.DEBUG},
+    optimizer: { enabled: !process.env.DEBUG },
   },
   networks: {
     ropsten: {
@@ -34,8 +34,8 @@ module.exports = {
     },
     forking: {
       url: "https://eth-mainnet.alchemyapi.io/v2/wno14CpI8Et2hP6pWmcHpZZsO_nLaYQW",
-      blockNumber: 11095000
-    }
+      blockNumber: 11095000,
+    },
   },
   gasReporter: {
     enabled: process.env.REPORT_GAS !== undefined,

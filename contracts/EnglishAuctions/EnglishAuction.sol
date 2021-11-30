@@ -2,12 +2,9 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import "../utils.sol";
 
 
 contract EnglishAuction {
-
-    Utils utils = new Utils();
 
     // static
     address public owner;
@@ -20,9 +17,6 @@ contract EnglishAuction {
     /// @notice the ERC721 token address of the vault's token
     ERC721 public token;
     uint256 public tokenId;
-
-    // state
-    bool public cancelled;
     
     uint256 public highestBindingBid;
     address public highestBidder;
@@ -34,6 +28,7 @@ contract EnglishAuction {
     event Bid(address bidder, uint256 bid, address highestBidder, uint256 highestBid, uint256 highestBindingBid);
     event Withdrawal(address withdrawer, address withdrawalAccount, uint amount);
     event Cancelled();
+    event End(address _highestBidder, uint256 _highestBid);
 
     enum AuctionState {
         AuctionDeployed,
@@ -48,60 +43,79 @@ contract EnglishAuction {
     }
 
     modifier onlyNotOwner {
-        if (msg.sender == owner) revert("Owner cannot perform this operation.");
+        require(msg.sender != owner, "Owner cannot perform this operation.");
         _;
     }
 
-    modifier onlyAfterStart {
-        if (auctionState != AuctionState.AuctionStarted) revert("Auction state not live.");
+    modifier onlyDeployed {
+        require(auctionState == AuctionState.AuctionDeployed, "Auction's already started.");
         _;
     }
 
-    modifier onlyBeforeEnd {
-        if(block.timestamp > endTime) auctionState = AuctionState.AuctionEnded;
-        if (auctionState == AuctionState.AuctionEnded) revert("Auction has already ended.");
+    modifier onlyLive {
+        require(auctionState == AuctionState.AuctionStarted, "Auction is not live.");
         _;
     }
 
-    modifier onlyNotCancelled {
-        if (cancelled) revert("Auction was cancelled");
+    modifier notCancelled {
+        require(auctionState != AuctionState.AuctionCancelled, "Auction is not cancelled");
         _;
     }
 
-    modifier onlyEndedOrCancelled {
-        if (auctionState != AuctionState.AuctionEnded && !cancelled) revert("Auction must be ended or cancelled for this operation.");
+    modifier cancelled {
+        require(auctionState == AuctionState.AuctionCancelled, "Auction is cancelled.");
+        _;
+    }
+
+    modifier onlyEnded {
+        require(auctionState == AuctionState.AuctionEnded, "Auction must be ended for this operation.");
+        _;
+    }
+
+    modifier endedOrCancelled() {
+        require(!(auctionState == AuctionState.AuctionDeployed || auctionState == AuctionState.AuctionStarted),
+            "Auction did not end or was cancelled.");
+        _;
+    }
+
+    modifier timeTransition() {
+        if (block.timestamp > endTime) {
+            _end();
+        }
         _;
     }
 
     constructor(address _owner, uint _bidIncrement, uint256 _auctionPeriodInSeconds,
         address _token, uint256 _tokenId, uint256 _floorPrice) {
-        require(IERC721(_token).ownerOf(_tokenId) == _owner, "Auction can only be deployed by the owner of the token");
+        require(IERC721(_token).ownerOf(_tokenId) == _owner, "Auction can only be deployed by the owner of the token.");
         owner = _owner;
         bidIncrement = _bidIncrement;
         auctionPeriodInSeconds = _auctionPeriodInSeconds;
         token = ERC721(_token);
         tokenId = _tokenId;
-        _escrow(owner, tokenId);
         auctionState = AuctionState.AuctionDeployed;
-        floorPrice = _floorPrice;
+        floorPrice = _floorPrice * 1 ether;
     }
 
-    function _escrow(address _owner, uint256 _tokenId) internal {
-        // it will throw if transfer fails
-        token.transferFrom(_owner, address(this), _tokenId);
-    }
-
-    function getHighestBid() public view returns (uint) {
+    function getHighestBid() public view returns (uint256) {
         return bids[highestBidder];
     }
 
-    function startAuction() public onlyOwner {
+    function getBidForAnAddress(address bidder) public view returns (uint256) {
+        return bids[bidder];
+    }
+
+    function getAuctionState() public view returns(AuctionState) {
+        return auctionState;
+    }
+
+    function start() public onlyOwner onlyDeployed {
         auctionState = AuctionState.AuctionStarted;
         startTime = block.timestamp;
         endTime = startTime + auctionPeriodInSeconds * 1 seconds;
     }
 
-    function bid() public payable onlyAfterStart onlyBeforeEnd onlyNotCancelled onlyNotOwner returns (bool success) {
+    function bid() public payable timeTransition onlyLive onlyNotOwner returns (bool success) {
         // reject payments of 0 ETH
        require(msg.value > floorPrice, "Cannot send bid less than floor price.");
 
@@ -149,23 +163,31 @@ contract EnglishAuction {
         return b;
     }
 
-    function cancelAuction() public onlyOwner onlyBeforeEnd onlyNotCancelled returns (bool success) {
-        cancelled = true;
+    function cancelAuction() public onlyOwner timeTransition onlyLive returns (bool success) {
         auctionState = AuctionState.AuctionCancelled;
         emit Cancelled();
         return true;
     }
 
-    function withdrawNFT() public external onlyEndedOrCancelled {
-        if (msg.sender == highestBidder)
-            token.transferFrom(address(this), msg.sender, tokenId);
+    function _end() internal {
+        auctionState = AuctionState.AuctionEnded;
+        emit End(highestBidder, bids[highestBidder]);
     }
-    function withdraw() public external onlyEndedOrCancelled returns (bool success)
-    {
+
+    function withdrawNFT() external timeTransition onlyEnded {
+        require(msg.sender == highestBidder, "Only the highest bidder can withdraw the auction item.");
+        token.transferFrom(address(this), msg.sender, tokenId);
+    }
+
+    function withdrawNFTWhenCancelled() external onlyOwner cancelled {
+        token.transferFrom(address(this), msg.sender, tokenId);
+    }
+
+    function withdraw() external timeTransition endedOrCancelled {
         address withdrawalAccount;
         uint256 withdrawalAmount;
-
-        if (cancelled) {
+        require(bids[msg.sender] > 0, "Sender has no bids to withdraw.");
+        if (auctionState == AuctionState.AuctionCancelled) {
             // if the auction was cancelled, everyone should simply be allowed to withdraw their funds
             withdrawalAccount = msg.sender;
             withdrawalAmount = bids[withdrawalAccount];
@@ -194,10 +216,8 @@ contract EnglishAuction {
         require(withdrawalAmount > 0, "Withdrawal amount cannot be 0");
         bids[withdrawalAccount] -= withdrawalAmount;
         // send the funds
-        require(utils.sendStableCoin(address(this), withdrawalAccount,
-            withdrawalAmount), "Transfer amount not successful");
+        require(payable(withdrawalAccount).send(withdrawalAmount), "Transfer amount not successful");
         emit Withdrawal(msg.sender, withdrawalAccount, withdrawalAmount);
-        return true;
     }
 }
 
