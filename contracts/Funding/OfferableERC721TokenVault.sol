@@ -150,18 +150,21 @@ contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeab
 
     /// @notice an external function to bid on purchasing the vaults NFT.
     function bid(uint _amount, uint256 _value) external payable timeTransition {
+        uint256 totalToBuy = _amount * listingPrice;
         require(!paused(), "The bid is paused.");
         require(_value > 0, "Funds sent cannot be zero.");
         require(_amount > 0, "Bid amount cannot be zero.");
         require(funders[msg.sender] > 0, "Address is not allowed to participate in the offering.");
         require(funders[msg.sender] >= _amount, "Bid is more than allocated for this address.");
-        require(_amount * listingPrice <= _value, "Funds sent for bid is less than the total capital required to buy the amount.");
+        require(totalToBuy <= _value, "Funds sent for bid is less than the total capital required to buy the amount.");
         require(remaining >= _amount, "Remaining is less than the amount that is bid.");
         remaining -= _amount;
         funders[msg.sender] -= _amount;
-        require(sendStableCoin(msg.sender, projectFundingAddress, _value),
+        require(sendStableCoin(msg.sender, projectFundingAddress, totalToBuy),
             "Could not send the funds to the project offerings address.");
-        totalFunding += _value;
+        require(sendStableCoin(msg.sender, projectFundingAddress, value - totalToBuy),
+            "Could not send the refund back to the funder.");
+        totalFunding += totalToBuy;
         fractional.transfer(msg.sender, _amount);
         emit Bid(msg.sender, _amount);
         if (remaining == 0) {

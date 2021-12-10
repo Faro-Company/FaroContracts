@@ -1,7 +1,6 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { expectRevert } = require("@openzeppelin/test-helpers");
-const { BigNumber } = require("ethers-utils");
 
 const NAME = "KTLO Journey Starting";
 const SYMBOL = "KTLOM";
@@ -414,9 +413,13 @@ describe("EnglishAuction", function () {
     );
   });
 
-  it("Auctions end when time comes", async function () {
+  it("Auctions end when time comes", async function (method, params) {
     let auctionAddress, auction, participantSigner;
-    await ethers.provider.send("evm_increaseTime", [AUCTION_PERIOD]);
+    const provider = new ethers.provider.JsonRpcProvider();
+    await provider.ready;
+    console.log("provider ", provider);
+    await provider.send("evm_increaseTime", [AUCTION_PERIOD]);
+    await provider.send("evm_mine", []);
     const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
     for (let i = 0; i < this.signers.length; i++) {
       auctionAddress = await this.signers[0].getAuction(i);
@@ -443,7 +446,9 @@ describe("EnglishAuction", function () {
   });
 
   it("Cannot start the already ended auction", async function () {
+    console.log();
     await ethers.provider.send("evm_increaseTime", [AUCTION_PERIOD]);
+    await ethers.provider.send("evm_mine");
     const lastAuction = await this.signers[0].getAuction(2);
     const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
     const englishAuction = await EnglishAuction.attach(lastAuction);
