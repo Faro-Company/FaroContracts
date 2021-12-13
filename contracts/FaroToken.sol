@@ -4,8 +4,8 @@ pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
-contract KTLOToken is ERC20 {
-    constructor() ERC20("KTLO Studio Token", "KTLO") {
+contract FaroToken is ERC20 {
+    constructor() ERC20("Faro Studio Token", "Faro") {
         _mint(msg.sender, 2440000000 * 10**uint(decimals()));
     }
 }

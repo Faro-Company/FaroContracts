@@ -2,8 +2,8 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { expectRevert } = require("@openzeppelin/test-helpers");
 
-const NAME = "KTLO Journey Starting";
-const SYMBOL = "KTLOM";
+const NAME = "FARO Journey Starting";
+const SYMBOL = "FAROM";
 const TOKEN_URI = "HERE";
 const FLOOR_PRICE = 5;
 const INSUFFICIENT_BID_PRICE = "2";
@@ -75,7 +75,7 @@ describe("EnglishAuction", function () {
       await usdcTransferTx.wait();
     }
 
-    const KtlNFT = await ethers.getContractFactory("KTLONFT");
+    const KtlNFT = await ethers.getContractFactory("FaroNFT");
     this.ktlNFT = await KtlNFT.deploy(NAME, SYMBOL, TOKEN_URI, CONTENT_ID);
     await this.ktlNFT.deployed();
     const erc721ContractWithSigner = this.ktlNFT.connect(this.ownerSigner);

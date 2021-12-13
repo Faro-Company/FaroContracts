@@ -2,15 +2,14 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { expectRevert } = require("@openzeppelin/test-helpers");
 
-const NAME = "KTLO Journey Starting";
-const SYMBOL = "KTLOM";
+const NAME = "FARO Journey Starting";
+const SYMBOL = "FAROM";
 const TOKEN_URI = "HERE";
 const LIST_PRICE = 5;
 const LISTING_PERIOD = 30;
 
 const ACCOUNTS_NUM = 20;
 const PARTICIPANTS_NUM = 17;
-const DOLLAR_DISTRIBUTE_AMOUNT = 10000000000;
 const BUY_AMOUNT = 500;
 
 describe("OfferableERC721TokenVault", function () {
@@ -33,19 +32,6 @@ describe("OfferableERC721TokenVault", function () {
     this.funderAddresses = [];
     this.allocations = [];
 
-    const USDCMock = await ethers.getContractFactory("USDCMock");
-    this.usdcMock = await USDCMock.deploy();
-    await this.usdcMock.deployed();
-
-    let usdcApproveTx = await this.usdcMock.approve(
-      this.user2,
-      DOLLAR_DISTRIBUTE_AMOUNT * PARTICIPANTS_NUM
-    );
-    await usdcApproveTx.wait();
-
-    let usdcSigner = this.usdcMock.connect(this.distributor);
-    let usdcTransferTx;
-
     this.fairAlloc = Math.floor(this.supply / PARTICIPANTS_NUM);
 
     for (let i = 3; i < ACCOUNTS_NUM; i++) {
@@ -54,26 +40,20 @@ describe("OfferableERC721TokenVault", function () {
       this.offeringParticipants.push(participantWallet);
       this.funderAddresses.push(participantAddress);
       this.allocations.push(this.fairAlloc);
-      usdcTransferTx = await usdcSigner.transferFrom(
-        this.owner,
-        participantAddress,
-        DOLLAR_DISTRIBUTE_AMOUNT
-      );
-      await usdcTransferTx.wait();
     }
     this.supply = PARTICIPANTS_NUM * this.fairAlloc;
 
-    const KtlOwnershipToken = await ethers.getContractFactory("KTLOwnership");
-    this.ktlOwnershipToken = await KtlOwnershipToken.deploy(
+    const FarownershipToken = await ethers.getContractFactory("Farownership");
+    this.farownershipToken = await FarownershipToken.deploy(
       NAME,
       SYMBOL,
       TOKEN_URI
     );
-    await this.ktlOwnershipToken.deployed();
+    await this.farownershipToken.deployed();
 
-    const ownershipTokenAddress = this.ktlOwnershipToken.address;
+    const ownershipTokenAddress = this.farownershipToken.address;
 
-    const erc721ContractWithSigner = this.ktlOwnershipToken.connect(
+    const erc721ContractWithSigner = this.farownershipToken.connect(
       this.ownerSigner
     );
     const mintTx = await erc721ContractWithSigner.mint(this.user);
@@ -86,7 +66,7 @@ describe("OfferableERC721TokenVault", function () {
     await this.ercVaultFactory.deployed();
     const tokenVaultFactoryAddress = this.ercVaultFactory.address;
 
-    const erc721RecipientSigner = this.ktlOwnershipToken.connect(
+    const erc721RecipientSigner = this.farownershipToken.connect(
       this.projectFundRaisingSigner
     );
     const approveTx = await erc721RecipientSigner.approve(
@@ -122,16 +102,6 @@ describe("OfferableERC721TokenVault", function () {
     this.participantSigner = this.offeringVault.connect(
       this.offeringParticipants[0]
     );
-
-    for (let i = 0; i < this.offeringParticipants.length; i++) {
-      participantWallet = this.offeringParticipants[i];
-      usdcSigner = this.usdcMock.connect(participantWallet);
-      usdcApproveTx = await usdcSigner.approve(
-        this.offeringVault.address,
-        DOLLAR_DISTRIBUTE_AMOUNT
-      );
-      await usdcApproveTx.wait();
-    }
   });
 
   it("Cannot be started by non-owner", async function () {
@@ -143,7 +113,7 @@ describe("OfferableERC721TokenVault", function () {
 
   it("Cannot make a bid on not started offering", async function () {
     await expectRevert(
-      this.participantSigner.bid(Math.floor(this.fairAlloc / 2), 1000),
+      this.participantSigner.bid(Math.floor(this.fairAlloc / 2)),
       "Offering is not live"
     );
   });
@@ -156,46 +126,44 @@ describe("OfferableERC721TokenVault", function () {
 
   it("Cannot bid if not among funders", async function () {
     await expectRevert(
-      this.nonownerWithOffering.bid(Math.floor(this.fairAlloc / 2), 1000),
+      this.nonownerWithOffering.bid(Math.floor(this.fairAlloc / 2)),
       "Address is not allowed to participate in the offering."
     );
   });
 
   it("Cannot bid more than allocation", async function () {
     await expectRevert(
-      this.participantSigner.bid(this.fairAlloc * 2, 1000),
+      this.participantSigner.bid(this.fairAlloc * 2),
       "Bid is more than allocated for this address."
     );
   });
 
   it("Cannot buy more by paying cheaper", async function () {
     await expectRevert(
-      this.participantSigner.bid(Math.floor(this.fairAlloc / 2), 10),
+      this.participantSigner.bid(Math.floor(this.fairAlloc / 2)),
       "Funds sent for bid is less than the total capital required to buy the amount."
     );
   });
 
   it("Cannot make a bid with 0 amount", async function () {
     await expectRevert(
-      this.participantSigner.bid(0, 1000),
+      this.participantSigner.bid(0),
       "Bid amount cannot be zero."
     );
   });
 
   it("Cannot make a bid by paying 0", async function () {
     await expectRevert(
-      this.participantSigner.bid(Math.floor(this.fairAlloc / 2), 0),
+      this.participantSigner.bid(Math.floor(this.fairAlloc / 2)),
       "Funds sent cannot be zero."
     );
   });
 
   it("Can make a legit bid", async function () {
-    const participantWallet = this.offeringParticipants[0];
     const participantAddress = this.offeringParticipants[0].address;
     const fundsToSend = BUY_AMOUNT * LIST_PRICE;
-    const usdcSigner = this.usdcMock.connect(participantWallet);
-    const balance = await usdcSigner.balanceOf(participantAddress);
-    const tx = await this.participantSigner.bid(BUY_AMOUNT, fundsToSend);
+    const balance = await ethers.provider.getBalance(participantAddress);
+    const tx = await this.participantSigner.bid(BUY_AMOUNT);
     await tx.wait();
     expect(
       (
@@ -208,18 +176,16 @@ describe("OfferableERC721TokenVault", function () {
       ).toString()
     ).to.equal(BUY_AMOUNT.toString());
     expect(
-      (await usdcSigner.balanceOf(participantAddress)).toString()
+      (await ethers.provider.getBalance(participantAddress)).toString()
     ).to.equal((balance - fundsToSend).toString());
   });
 
   it("Can make a legit bid again without finishing the allocation", async function () {
-    const participantWallet = this.offeringParticipants[0];
     const participantAddress = this.offeringParticipants[0].address;
     const fundsToSend = BUY_AMOUNT * LIST_PRICE;
     const TOTAL_AMOUNT_TO_BE_BOUGHT = 2 * BUY_AMOUNT;
-    const usdcSigner = this.usdcMock.connect(participantWallet);
-    const balance = await usdcSigner.balanceOf(participantAddress);
-    const tx = await this.participantSigner.bid(BUY_AMOUNT, fundsToSend);
+    const balance = await ethers.provider.getBalance(participantAddress);
+    const tx = await this.participantSigner.bid(BUY_AMOUNT);
     await tx.wait();
     expect(
       (
@@ -232,14 +198,13 @@ describe("OfferableERC721TokenVault", function () {
       ).toString()
     ).to.equal(TOTAL_AMOUNT_TO_BE_BOUGHT.toString());
     expect(
-      (await usdcSigner.balanceOf(participantAddress)).toString()
+      (await ethers.provider.getBalance(participantAddress)).toString()
     ).to.equal((balance - fundsToSend).toString());
   });
 
   it("Cant buy more than allocated after successful bids", async function () {
-    const fundsToSend = BUY_AMOUNT * LIST_PRICE;
     await expectRevert(
-      this.participantSigner.bid(this.fairAlloc - BUY_AMOUNT, fundsToSend),
+      this.participantSigner.bid(this.fairAlloc - BUY_AMOUNT),
       "Bid is more than allocated for this address."
     );
   });
@@ -254,7 +219,7 @@ describe("OfferableERC721TokenVault", function () {
   it("Owner can pause", async function () {
     const tx = await this.ownerWithOffering.pause();
     await tx.wait();
-    expect(await this.participantSigner.paused()).is.true;
+    expect(await this.participantSigner.paused()).to.equal(true);
   });
 
   it("Cant buy when paused", async function () {
@@ -275,7 +240,7 @@ describe("OfferableERC721TokenVault", function () {
   it("Owner can unpause", async function () {
     const tx = await this.ownerWithOffering.unpause();
     await tx.wait();
-    expect(await this.participantSigner.paused()).is.false;
+    expect(await this.participantSigner.paused()).to.equal(false);
   });
 
   it("Bidding finishes when allocations are all bought", async function () {
@@ -295,9 +260,8 @@ describe("OfferableERC721TokenVault", function () {
         ).toString()
       );
       fundsToSend = amountToBid * LIST_PRICE;
-      const usdcSigner = this.usdcMock.connect(participant);
-      const balance = await usdcSigner.balanceOf(participantAddress);
-      tx = await participantSigner.bid(amountToBid, fundsToSend);
+      const balance = await ethers.provider.getBalance(participantAddress);
+      tx = await participantSigner.bid(amountToBid);
       await tx.wait();
       expect(
         (
@@ -310,7 +274,7 @@ describe("OfferableERC721TokenVault", function () {
         ).toString()
       ).to.equal(this.fairAlloc.toString());
       expect(
-        (await usdcSigner.balanceOf(participantAddress)).toString()
+        (await ethers.provider.getBalance(participantAddress)).toString()
       ).to.equal((balance - fundsToSend).toString());
     }
     expect((await participantSigner.getOfferingState()).toString()).to.equal(
@@ -319,9 +283,8 @@ describe("OfferableERC721TokenVault", function () {
   });
 
   it("Cannot bid on ended offering", async function () {
-    const fundsToSend = BUY_AMOUNT * LIST_PRICE;
     await expectRevert(
-      this.participantSigner.bid(BUY_AMOUNT, fundsToSend),
+      this.participantSigner.bid(BUY_AMOUNT),
       "Offering is not live."
     );
   });

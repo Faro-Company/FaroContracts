@@ -5,17 +5,15 @@ import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgradeable.sol";
-import "./KTLOFractional.sol";
+import "./FaroFractional.sol";
 
 
 contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeable {
 
-    IERC20 public constant USDC = IERC20(0xB7f8BC63BbcaD18155201308C8f3540b07f84F5e);
-
     /// @notice the ERC721 token address of the vault's token
     address private token;
 
-    KTLOFractional private fractional;
+    FaroFractional private fractional;
 
     /// @notice The project's funding address where stable coins are to be sent
     address payable private projectFundingAddress;
@@ -97,7 +95,7 @@ contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeab
         address[] memory _funderAddresses, uint256[] memory allocations) external initializer {
         // initialize inherited contracts
         __ERC721Holder_init();
-        fractional = new KTLOFractional(_name, _symbol, _supply, address(this));
+        fractional = new FaroFractional(_name, _symbol, _supply, address(this));
         // set storage variables
         token = _token;
         projectFundingAddress = _projectFundingAddress;
@@ -131,39 +129,19 @@ contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeab
         emit Start(msg.sender);
     }
 
-    function sendStableCoin(address from, address to, uint256 value) internal returns (bool) {
-        // Try to transfer USDC to the given recipient.
-        if (!_attemptUSDCTransfer(from, to, value)) {
-            return false;
-        }
-        return true;
-    }
-
-    // USDC transfer internal method
-    function _attemptUSDCTransfer(address from, address to, uint256 value) internal returns (bool)
-    {
-        // Here increase the gas limit a reasonable amount above the default, and try
-        // to send ETH to the recipient.
-        // NOTE: This might allow the recipient to attempt a limited reentrancy attack.
-        return USDC.transferFrom(from, to, value);
-    }
-
     /// @notice an external function to bid on purchasing the vaults NFT.
-    function bid(uint _amount, uint256 _value) external payable timeTransition {
+    function bid(uint _amount) external payable timeTransition {
         uint256 totalToBuy = _amount * listingPrice;
         require(!paused(), "The bid is paused.");
-        require(_value > 0, "Funds sent cannot be zero.");
+        require(msg.value > 0, "Funds sent cannot be zero.");
         require(_amount > 0, "Bid amount cannot be zero.");
         require(funders[msg.sender] > 0, "Address is not allowed to participate in the offering.");
         require(funders[msg.sender] >= _amount, "Bid is more than allocated for this address.");
-        require(totalToBuy <= _value, "Funds sent for bid is less than the total capital required to buy the amount.");
+        require(totalToBuy <= msg.value, "Funds sent for bid is less than the total capital required to buy the amount.");
         require(remaining >= _amount, "Remaining is less than the amount that is bid.");
         remaining -= _amount;
         funders[msg.sender] -= _amount;
-        require(sendStableCoin(msg.sender, projectFundingAddress, totalToBuy),
-            "Could not send the funds to the project offerings address.");
-        require(sendStableCoin(msg.sender, projectFundingAddress, value - totalToBuy),
-            "Could not send the refund back to the funder.");
+        require(payable(projectFundingAddress).send(totalToBuy), "Transfer amount not successful");
         totalFunding += totalToBuy;
         fractional.transfer(msg.sender, _amount);
         emit Bid(msg.sender, _amount);

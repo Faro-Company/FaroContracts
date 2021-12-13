@@ -1,13 +1,13 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
-const { expectEvent, expectRevert } = require("@openzeppelin/test-helpers");
+const { expectRevert } = require("@openzeppelin/test-helpers");
 
-const NAME = "KTLO Journey Starting";
-const SYMBOL = "KTLOM";
+const NAME = "FARO Journey Starting";
+const SYMBOL = "FAROM";
 const TOKEN_URI = "HERE";
 const TOKEN_ID = 1;
 
-describe("KTLOwnership", function () {
+describe("FAROwnership", function () {
   before(async function () {
     const accounts = await ethers.provider.listAccounts();
     this.owner = accounts[0];
@@ -15,45 +15,45 @@ describe("KTLOwnership", function () {
     this.user2 = accounts[3];
     this.userSigner = await ethers.getSigner(this.user);
     this.ownerSigner = await ethers.getSigner(this.owner);
-    const KtlOwnershipToken = await ethers.getContractFactory("KTLOwnership");
-    this.ktlOwnershipToken = await KtlOwnershipToken.deploy(
+    const FarownershipToken = await ethers.getContractFactory("Farownership");
+    this.farownershipToken = await FarownershipToken.deploy(
       NAME,
       SYMBOL,
       TOKEN_URI
     );
-    await this.ktlOwnershipToken.deployed();
+    await this.farownershipToken.deployed();
   });
 
-  it("Name is KTLO Journey Starting and symbol is KTLOM and token uri is HERE", async function () {
-    expect(await this.ktlOwnershipToken.name()).to.equal(NAME);
-    expect(await this.ktlOwnershipToken.symbol()).to.equal(SYMBOL);
-    expect(await this.ktlOwnershipToken.getAgreementURI()).to.equal(TOKEN_URI);
+  it("Name is FARO Journey Starting and symbol is FAROM and token uri is HERE", async function () {
+    expect(await this.farownershipToken.name()).to.equal(NAME);
+    expect(await this.farownershipToken.symbol()).to.equal(SYMBOL);
+    expect(await this.farownershipToken.getAgreementURI()).to.equal(TOKEN_URI);
   });
 
   it("The owner mints successfully", async function () {
-    this.ktlOwnershipToken.connect(this.ownerSigner);
-    const mintTx = await this.ktlOwnershipToken.mint(this.owner);
+    this.farownershipToken.connect(this.ownerSigner);
+    const mintTx = await this.farownershipToken.mint(this.owner);
     await mintTx.wait();
-    expect(await this.ktlOwnershipToken.getAgreementURI()).to.equal(TOKEN_URI);
-    expect(await this.ktlOwnershipToken.ownerOf(TOKEN_ID)).to.equal(this.owner);
+    expect(await this.farownershipToken.getAgreementURI()).to.equal(TOKEN_URI);
+    expect(await this.farownershipToken.ownerOf(TOKEN_ID)).to.equal(this.owner);
   });
 
   it("Non-owner cannot send it.", async function () {
-    this.ktlOwnershipToken.connect(this.user);
+    this.farownershipToken.connect(this.user);
     await expectRevert(
-      this.ktlOwnershipToken.transferFrom(this.user, this.user2, TOKEN_ID),
+      this.farownershipToken.transferFrom(this.user, this.user2, TOKEN_ID),
       "ERC721: transfer of token that is not own"
     );
   });
 
   it("Owner can send it successfully.", async function () {
-    this.ktlOwnershipToken.connect(this.ownerSigner);
-    const tx = await this.ktlOwnershipToken.transferFrom(
+    this.farownershipToken.connect(this.ownerSigner);
+    const tx = await this.farownershipToken.transferFrom(
       this.owner,
       this.user,
       TOKEN_ID
     );
     await tx.wait();
-    expect(await this.ktlOwnershipToken.ownerOf(TOKEN_ID)).to.equal(this.user);
+    expect(await this.farownershipToken.ownerOf(TOKEN_ID)).to.equal(this.user);
   });
 });
