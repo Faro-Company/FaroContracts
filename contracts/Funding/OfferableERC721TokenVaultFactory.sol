@@ -49,6 +49,7 @@ contract OfferableERC721VaultFactory is Ownable, Pausable {
             _symbol,
             _funderAddresses,
             _allocations
+
         );
 
         address vault = address(new InitializedProxy(logic, _initializationCalldata));

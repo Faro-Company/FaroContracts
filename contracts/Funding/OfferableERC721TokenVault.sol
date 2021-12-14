@@ -133,9 +133,9 @@ contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeab
     function bid(uint _amount) external payable timeTransition {
         uint256 totalToBuy = _amount * listingPrice;
         require(!paused(), "The bid is paused.");
+        require(funders[msg.sender] > 0, "Address is not allowed to participate in the offering.");
         require(msg.value > 0, "Funds sent cannot be zero.");
         require(_amount > 0, "Bid amount cannot be zero.");
-        require(funders[msg.sender] > 0, "Address is not allowed to participate in the offering.");
         require(funders[msg.sender] >= _amount, "Bid is more than allocated for this address.");
         require(totalToBuy <= msg.value, "Funds sent for bid is less than the total capital required to buy the amount.");
         require(remaining >= _amount, "Remaining is less than the amount that is bid.");
