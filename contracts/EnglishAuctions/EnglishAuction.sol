@@ -73,7 +73,7 @@ contract EnglishAuction {
     }
 
     modifier endedOrCancelled() {
-        require(!(auctionState == AuctionState.AuctionDeployed || auctionState == AuctionState.AuctionStarted),
+        require(auctionState == AuctionState.AuctionCancelled || auctionState == AuctionState.AuctionEnded,
             "Auction did not end or was cancelled.");
         _;
     }
@@ -170,8 +170,10 @@ contract EnglishAuction {
     }
 
     function _end() internal {
-        auctionState = AuctionState.AuctionEnded;
-        emit End(highestBidder, bids[highestBidder]);
+        if (auctionState == AuctionState.AuctionStarted) {
+            auctionState = AuctionState.AuctionEnded;
+            emit End(highestBidder, bids[highestBidder]);
+        }
     }
 
     function withdrawNFT() external timeTransition onlyEnded {

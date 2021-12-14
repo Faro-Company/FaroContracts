@@ -33,6 +33,7 @@
     "@openzeppelin/contracts-upgradeable": "^4.3.2",
     "bignumber": "^1.1.0",
     "chai-as-promised": "^7.1.1",
+    "ether-time-traveler": "^1.1.0",
     "ethereumjs-wallet": "^1.0.2",
     "ethers-utils": "^2.1.11",
     "hardhat-truffle5": "^1.0.1",

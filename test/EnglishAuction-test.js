@@ -1,6 +1,7 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { expectRevert } = require("@openzeppelin/test-helpers");
+const timeMachine = require("ether-time-traveler");
 
 const NAME = "FARO Journey Starting";
 const SYMBOL = "FAROM";
@@ -12,7 +13,7 @@ const BID_PRICE_LOWER_THAN_HIGH = "6";
 const BID_PRICE_LOWER_THAN_HIGH_DOUBLED = "12";
 const BID_PRICE_MORE_THAN_FLOOR_DOUBLED = "16";
 
-const AUCTION_PERIOD = 600;
+const AUCTION_PERIOD = 1000;
 const BID_INCREMENT = 1;
 
 const CONTENT_ID = 123456;
@@ -413,47 +414,26 @@ describe("EnglishAuction", function () {
     );
   });
 
-  it("Auctions end when time comes", async function (method, params) {
-    let auctionAddress, auction, participantSigner;
-    const provider = new ethers.provider.JsonRpcProvider();
-    await provider.ready;
-    console.log("provider ", provider);
-    await provider.send("evm_increaseTime", [AUCTION_PERIOD]);
-    await provider.send("evm_mine", []);
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    for (let i = 0; i < this.signers.length; i++) {
-      auctionAddress = await this.signers[0].getAuction(i);
-      auction = await EnglishAuction.attach(auctionAddress);
-      participantSigner = auction.connect(this.wallets[i]);
-      expect((await participantSigner.getAuctionState()).toString()).to.equal(
-        AUCTION_ENDED_STATE
-      );
-    }
-  });
-
   it("Cannot participate after the auction ends", async function () {
-    await ethers.provider.send("evm_increaseTime", [AUCTION_PERIOD]);
+    await timeMachine.advanceTimeAndBlock(ethers.provider, AUCTION_PERIOD);
     const lastAuction = await this.signers[0].getLastAuction();
     const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
     const englishAuction = await EnglishAuction.attach(lastAuction);
     const participantSigner = englishAuction.connect(this.wallets[2]);
     await expectRevert(
       participantSigner.bid({
-        value: ethers.util.parseEther(BID_PRICE_MORE_THAN_FLOOR),
+        value: ethers.utils.parseEther(BID_PRICE_MORE_THAN_FLOOR),
       }),
       "Auction is not live."
     );
   });
 
   it("Cannot start the already ended auction", async function () {
-    console.log();
-    await ethers.provider.send("evm_increaseTime", [AUCTION_PERIOD]);
-    await ethers.provider.send("evm_mine");
     const lastAuction = await this.signers[0].getAuction(2);
     const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
     const englishAuction = await EnglishAuction.attach(lastAuction);
     const participantSigner = englishAuction.connect(this.wallets[2]);
-    await expectRevert(participantSigner.start(), "Auction is not live.");
+    await expectRevert(participantSigner.start(), "Auction's already started");
   });
 
   it("Non-bidder cannot withdraw auction item", async function () {
@@ -494,11 +474,13 @@ describe("EnglishAuction", function () {
     const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
     const englishAuction = await EnglishAuction.attach(lastAuction);
     const participantSigner = englishAuction.connect(this.wallets[1]);
+    const gas = await participantSigner.estimateGas.withdraw();
     const tx = await participantSigner.withdraw();
     await tx.wait();
-    expect((await this.wallets[1].getBalance()).toString()).to.equal(
-      this.initialBalances[1].toString()
-    );
+    const finalBalance = await this.wallets[1].getBalance();
+    const balanceDifference = this.initialBalances[1] - finalBalance;
+    console.log("balance difference ", balanceDifference);
+    expect(balanceDifference - gas).lessThan(Math.pow(10, 9));
   });
 
   it("Not winner cannot withdraw its funds again", async function () {

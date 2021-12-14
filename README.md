@@ -4,7 +4,7 @@
 For local host, testing:
 
 ```shell
-cd KTLOContracts
+cd FaroContracts
 npm install package.json
 npx hardhat node &
 npx hardhat test
