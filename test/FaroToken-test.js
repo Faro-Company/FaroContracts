@@ -3,7 +3,7 @@ const { ethers } = require("hardhat");
 const { BN, expectRevert } = require("@openzeppelin/test-helpers");
 
 const FARO_SUPPLY = new BN("2440000000000000000000000000");
-const NAME = "FARO Studio Token";
+const NAME = "Faro Studio Token";
 const SYMBOL = "FARO";
 const WRONG_BALANCE = new BN("10");
 const TRANSFER_AMOUNT = new BN("10000000000");
