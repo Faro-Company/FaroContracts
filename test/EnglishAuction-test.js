@@ -395,6 +395,18 @@ describe("EnglishAuction", function () {
     );
   });
 
+  it("Cannot trigger end before the end time", async function () {
+    const lastAuction = await this.signers[0].getLastAuction();
+    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
+    const englishAuction = await EnglishAuction.attach(lastAuction);
+    const participantSigner = englishAuction.connect(this.wallets[2]);
+    const tx = await participantSigner.triggerEnd();
+    tx.wait();
+    expect((await participantSigner.getAuctionState()).toString()).to.equal(
+      AUCTION_STARTED_STATE
+    );
+  });
+
   it("Cannot participate after the auction ends", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
     const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
