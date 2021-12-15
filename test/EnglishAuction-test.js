@@ -13,14 +13,14 @@ const BID_PRICE_LOWER_THAN_HIGH = "6";
 const BID_PRICE_LOWER_THAN_HIGH_DOUBLED = "12";
 const BID_PRICE_MORE_THAN_FLOOR_DOUBLED = "16";
 
-const AUCTION_PERIOD = 1000;
+const AUCTION_PERIOD = 600;
+const FAST_FORWARD_PERIOD = 4 * AUCTION_PERIOD;
 const BID_INCREMENT = 1;
 
 const CONTENT_ID = 123456;
 
 const ACCOUNTS_NUM = 20;
 const PARTICIPANTS_NUM = 17;
-const DOLLAR_DISTRIBUTE_AMOUNT = 10000000000;
 const SAMPLE_TOKEN_ID = 1;
 
 const AUCTION_STARTED_STATE = "1";
@@ -47,19 +47,6 @@ describe("EnglishAuction", function () {
     this.funderAddresses = [];
     this.allocations = [];
 
-    const USDCMock = await ethers.getContractFactory("USDCMock");
-    this.usdcMock = await USDCMock.deploy();
-    await this.usdcMock.deployed();
-
-    const usdcApproveTx = await this.usdcMock.approve(
-      this.user2,
-      DOLLAR_DISTRIBUTE_AMOUNT * PARTICIPANTS_NUM
-    );
-    await usdcApproveTx.wait();
-
-    const usdcSigner = this.usdcMock.connect(this.distributor);
-    let usdcTransferTx;
-
     this.fairAlloc = Math.floor(this.supply / PARTICIPANTS_NUM);
 
     for (let i = 3; i < ACCOUNTS_NUM; i++) {
@@ -68,12 +55,6 @@ describe("EnglishAuction", function () {
       this.offeringParticipants.push(participantWallet);
       this.funderAddresses.push(participantAddress);
       this.allocations.push(this.fairAlloc);
-      usdcTransferTx = await usdcSigner.transferFrom(
-        this.owner,
-        participantAddress,
-        DOLLAR_DISTRIBUTE_AMOUNT
-      );
-      await usdcTransferTx.wait();
     }
 
     const KtlNFT = await ethers.getContractFactory("FaroNFT");
@@ -415,16 +396,19 @@ describe("EnglishAuction", function () {
   });
 
   it("Cannot participate after the auction ends", async function () {
-    await timeMachine.advanceTimeAndBlock(ethers.provider, AUCTION_PERIOD);
     const lastAuction = await this.signers[0].getLastAuction();
     const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
     const englishAuction = await EnglishAuction.attach(lastAuction);
     const participantSigner = englishAuction.connect(this.wallets[2]);
+    await timeMachine.advanceTimeAndBlock(ethers.provider, FAST_FORWARD_PERIOD);
     await expectRevert(
       participantSigner.bid({
         value: ethers.utils.parseEther(BID_PRICE_MORE_THAN_FLOOR),
       }),
       "Auction is not live."
+    );
+    expect((await participantSigner.getAuctionState()).toString()).to.equal(
+      AUCTION_ENDED_STATE
     );
   });
 
@@ -479,7 +463,6 @@ describe("EnglishAuction", function () {
     await tx.wait();
     const finalBalance = await this.wallets[1].getBalance();
     const balanceDifference = this.initialBalances[1] - finalBalance;
-    console.log("balance difference ", balanceDifference);
     expect(balanceDifference - gas).lessThan(Math.pow(10, 9));
   });
 
@@ -503,10 +486,8 @@ describe("EnglishAuction", function () {
     await tx.wait();
     this.ktlNFT.connect(this.wallets[2]);
     expect(
-      (await this.ktlNFT.ownerOf(PARTICIPANTS_NUM - 1))
-        .toString()
-        .to.equal(this.wallets[0].address)
-    );
+      (await this.ktlNFT.ownerOf(PARTICIPANTS_NUM - 1)).toString()
+    ).to.equal(this.wallets[0].address);
   });
 
   it("Winner cannot attempt to withdraw the NFT again", async function () {
@@ -516,7 +497,7 @@ describe("EnglishAuction", function () {
     const participantSigner = englishAuction.connect(this.wallets[0]);
     await expectRevert(
       participantSigner.withdrawNFT(),
-      "ERC721: transfer of token that is not own"
+      "ERC721: transfer caller is not owner nor approved"
     );
   });
 
@@ -526,7 +507,7 @@ describe("EnglishAuction", function () {
     const englishAuction = await EnglishAuction.attach(lastAuction);
     const participantSigner = englishAuction.connect(this.wallets[0]);
     const bindingBid = await participantSigner.highestBindingBid();
-    const highestBid = await participantSigner.highestBid();
+    const highestBid = await participantSigner.getHighestBid();
     const currentBalance = await this.wallets[0].getBalance();
     expect(currentBalance + highestBid).to.equal(this.initialBalances[0]);
     const tx = await participantSigner.withdraw();

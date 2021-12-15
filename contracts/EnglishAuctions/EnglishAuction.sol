@@ -6,11 +6,12 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 contract EnglishAuction {
 
-    // static
+    uint256 constant maxAuctionPeriod = 31536000;
+
     address public owner;
     uint256 public bidIncrement;
-    uint256 public startTime;
     uint256 public endTime;
+    uint256 public startTime;
     uint256 auctionPeriodInSeconds;
     uint256 public floorPrice;
     
@@ -26,7 +27,7 @@ contract EnglishAuction {
     AuctionState public auctionState;
 
     event Bid(address bidder, uint256 bid, address highestBidder, uint256 highestBid, uint256 highestBindingBid);
-    event Withdrawal(address withdrawer, address withdrawalAccount, uint amount);
+    event Withdrawal(address withdrawer, address withdrawalAccount, uint256 amount);
     event Cancelled();
     event End(address _highestBidder, uint256 _highestBid);
 
@@ -53,6 +54,7 @@ contract EnglishAuction {
     }
 
     modifier onlyLive {
+        _end();
         require(auctionState == AuctionState.AuctionStarted, "Auction is not live.");
         _;
     }
@@ -68,26 +70,22 @@ contract EnglishAuction {
     }
 
     modifier onlyEnded {
+        _end();
         require(auctionState == AuctionState.AuctionEnded, "Auction must be ended for this operation.");
         _;
     }
 
     modifier endedOrCancelled() {
+        _end();
         require(auctionState == AuctionState.AuctionCancelled || auctionState == AuctionState.AuctionEnded,
             "Auction did not end or was cancelled.");
         _;
     }
 
-    modifier timeTransition() {
-        if (block.timestamp > endTime) {
-            _end();
-        }
-        _;
-    }
-
-    constructor(address _owner, uint _bidIncrement, uint256 _auctionPeriodInSeconds,
+    constructor(address _owner, uint256 _bidIncrement, uint256 _auctionPeriodInSeconds,
         address _token, uint256 _tokenId, uint256 _floorPrice) {
         require(IERC721(_token).ownerOf(_tokenId) == _owner, "Auction can only be deployed by the owner of the token.");
+        require(auctionPeriodInSeconds < maxAuctionPeriod, "Auction period cannot be more than 1 year");
         owner = _owner;
         bidIncrement = _bidIncrement;
         auctionPeriodInSeconds = _auctionPeriodInSeconds;
@@ -115,7 +113,7 @@ contract EnglishAuction {
         endTime = startTime + auctionPeriodInSeconds * 1 seconds;
     }
 
-    function bid() public payable timeTransition onlyLive onlyNotOwner returns (bool success) {
+    function bid() public payable onlyLive onlyNotOwner returns (bool success) {
         // reject payments of 0 ETH
        require(msg.value > floorPrice, "Cannot send bid less than floor price.");
 
@@ -163,20 +161,20 @@ contract EnglishAuction {
         return b;
     }
 
-    function cancelAuction() public onlyOwner timeTransition onlyLive returns (bool success) {
+    function cancelAuction() public onlyOwner onlyLive returns (bool success) {
         auctionState = AuctionState.AuctionCancelled;
         emit Cancelled();
         return true;
     }
 
     function _end() internal {
-        if (auctionState == AuctionState.AuctionStarted) {
+        if (block.timestamp > endTime && auctionState == AuctionState.AuctionStarted) {
             auctionState = AuctionState.AuctionEnded;
             emit End(highestBidder, bids[highestBidder]);
         }
     }
 
-    function withdrawNFT() external timeTransition onlyEnded {
+    function withdrawNFT() external onlyEnded {
         require(msg.sender == highestBidder, "Only the highest bidder can withdraw the auction item.");
         token.transferFrom(address(this), msg.sender, tokenId);
     }
@@ -185,7 +183,7 @@ contract EnglishAuction {
         token.transferFrom(address(this), msg.sender, tokenId);
     }
 
-    function withdraw() external timeTransition endedOrCancelled {
+    function withdraw() external endedOrCancelled {
         address withdrawalAccount;
         uint256 withdrawalAmount;
         require(bids[msg.sender] > 0, "Sender has no bids to withdraw.");
