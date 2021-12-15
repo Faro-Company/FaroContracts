@@ -107,6 +107,10 @@ contract EnglishAuction {
         return auctionState;
     }
 
+    function triggerEnd() public {
+        _end();
+    }
+
     function start() public onlyOwner onlyDeployed {
         auctionState = AuctionState.AuctionStarted;
         startTime = block.timestamp;
@@ -213,7 +217,7 @@ contract EnglishAuction {
                 withdrawalAmount = bids[withdrawalAccount];
             }
         }
-        require(withdrawalAmount > 0, "Withdrawal amount cannot be 0");
+        require(withdrawalAmount > 0, "Withdrawal amount cannot be 0.");
         bids[withdrawalAccount] -= withdrawalAmount;
         // send the funds
         require(payable(withdrawalAccount).send(withdrawalAmount), "Transfer amount not successful");

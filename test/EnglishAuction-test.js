@@ -407,9 +407,22 @@ describe("EnglishAuction", function () {
       }),
       "Auction is not live."
     );
-    expect((await participantSigner.getAuctionState()).toString()).to.equal(
-      AUCTION_ENDED_STATE
-    );
+  });
+
+  it("Auctions have already ended", async function () {
+    let tx, auction, participantSigner, engAuction, EngAuction;
+    for (let i = 0; i < this.signers.length; i++) {
+      if (i === 3) continue;
+      auction = await this.signers[0].getAuction(i);
+      EngAuction = await ethers.getContractFactory("EnglishAuction");
+      engAuction = await EngAuction.attach(auction);
+      participantSigner = engAuction.connect(this.wallets[2]);
+      tx = await participantSigner.triggerEnd();
+      tx.wait();
+      expect((await participantSigner.getAuctionState()).toString()).to.equal(
+        AUCTION_ENDED_STATE
+      );
+    }
   });
 
   it("Cannot start the already ended auction", async function () {
@@ -458,12 +471,13 @@ describe("EnglishAuction", function () {
     const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
     const englishAuction = await EnglishAuction.attach(lastAuction);
     const participantSigner = englishAuction.connect(this.wallets[1]);
-    const gas = await participantSigner.estimateGas.withdraw();
     const tx = await participantSigner.withdraw();
     await tx.wait();
-    const finalBalance = await this.wallets[1].getBalance();
-    const balanceDifference = this.initialBalances[1] - finalBalance;
-    expect(balanceDifference - gas).lessThan(Math.pow(10, 9));
+    expect(
+      (
+        await participantSigner.getBidForAnAddress(this.wallets[1].address)
+      ).toString()
+    ).to.equal("0");
   });
 
   it("Not winner cannot withdraw its funds again", async function () {
@@ -508,13 +522,12 @@ describe("EnglishAuction", function () {
     const participantSigner = englishAuction.connect(this.wallets[0]);
     const bindingBid = await participantSigner.highestBindingBid();
     const highestBid = await participantSigner.getHighestBid();
-    const currentBalance = await this.wallets[0].getBalance();
-    expect(currentBalance + highestBid).to.equal(this.initialBalances[0]);
+    expect(highestBid - bindingBid).to.be.above(0);
     const tx = await participantSigner.withdraw();
     await tx.wait();
-    expect(await this.wallets[0].getBalance()).to.equal(
-      this.initialBalances[0] - bindingBid
-    );
+    expect(
+      await participantSigner.getBidForAnAddress(this.wallets[0].address)
+    ).to.equal(bindingBid.toString());
   });
 
   it("Winner cannot withdraw again ", async function () {
@@ -524,7 +537,7 @@ describe("EnglishAuction", function () {
     const participantSigner = englishAuction.connect(this.wallets[0]);
     await expectRevert(
       participantSigner.withdraw(),
-      "Sender has no bids to withdraw."
+      "Withdrawal amount cannot be 0."
     );
   });
 });
