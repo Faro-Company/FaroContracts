@@ -25,6 +25,8 @@ contract EnglishAuctionFactory {
         return auctions[auctionCount - 1];
     }
 
+
+
     function getAuctionCount() public view returns(uint256) {
         return auctionCount;
     }

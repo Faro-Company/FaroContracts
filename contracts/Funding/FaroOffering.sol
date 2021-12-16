@@ -8,14 +8,14 @@ import "@openzeppelin/contracts-upgradeable/token/ERC721/utils/ERC721HolderUpgra
 import "./FaroFractional.sol";
 
 
-contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeable {
+contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
 
     /// @notice the ERC721 token address of the vault's token
     address private token;
 
     FaroFractional private fractional;
 
-    /// @notice The project's funding address where stable coins are to be sent
+    /// @notice The project's funding address where blockchain's native currency is to be sent
     address payable private projectFundingAddress;
 
     address private owner;
@@ -38,8 +38,6 @@ contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeab
 
 
     uint256 private remaining;
-    uint256 private totalFunding;
-    uint256 private totalValue;
 
     /// @notice An event emitted when a listing starts
     event Start(address starter);
@@ -47,15 +45,11 @@ contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeab
     /// @notice An event emitted when bid happens
     event Bid(address bidder, uint256 amount);
 
-    event CannotBidWhenPaused();
-
     /// @notice An event emitted when end happens
     event End();
 
     modifier isOwner() {
-        if (msg.sender != owner)
-            revert("Sender is not the project owner.");
-        _;
+        require(msg.sender == owner, "Sender is not the project owner.");
     }
 
     modifier timeTransition() {
@@ -106,7 +100,6 @@ contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeab
         require(_createFundersMapping(_funderAddresses, allocations) == _supply,
             "Given supply is not equal to the sum of allocations");
         remaining = _supply;
-        totalValue = _supply * listingPrice;
     }
 
     function _createFundersMapping(address[] memory _funderAddresses,
@@ -123,7 +116,7 @@ contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeab
 
     /// @notice Start the offering
     function start() external isOwner {
-        require(listingState == OfferingState.inactive, "Offering is already live");
+        require(listingState == OfferingState.inactive, "Offering is already started");
         listingEnd = block.timestamp + listingPeriod;
         listingState = OfferingState.live;
         emit Start(msg.sender);
@@ -131,18 +124,17 @@ contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeab
 
     /// @notice an external function to bid on purchasing the vaults NFT.
     function bid(uint _amount) external payable timeTransition {
-        uint256 totalToBuy = _amount * listingPrice;
+        uint256 totalToPxgsdfghghfghay = _amount * listingPrice;
         require(!paused(), "The bid is paused.");
         require(funders[msg.sender] > 0, "Address is not allowed to participate in the offering.");
         require(msg.value > 0, "Funds sent cannot be zero.");
         require(_amount > 0, "Bid amount cannot be zero.");
         require(funders[msg.sender] >= _amount, "Bid is more than allocated for this address.");
-        require(totalToBuy <= msg.value, "Funds sent for bid is less than the total capital required to buy the amount.");
+        require(totalToPay <= msg.value, "Funds sent for bid is less than the total capital required to buy the amount.");
         require(remaining >= _amount, "Remaining is less than the amount that is bid.");
         remaining -= _amount;
         funders[msg.sender] -= _amount;
-        require(payable(projectFundingAddress).send(totalToBuy), "Transfer amount not successful");
-        totalFunding += totalToBuy;
+        require(payable(projectFundingAddress).send(totalToPay), "Transfer amount not successful");
         fractional.transfer(msg.sender, _amount);
         emit Bid(msg.sender, _amount);
         if (remaining == 0) {
@@ -156,7 +148,7 @@ contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeab
         emit End();
     }
 
-    /// @notice an external function to end an auction after the timer has run out
+    /// @notice an external function to end an auction
     function end() external isOwner {
         _end();
     }
@@ -169,12 +161,16 @@ contract OfferableERC721TokenVault is ERC721HolderUpgradeable, PausableUpgradeab
         _unpause();
     }
 
-    function getTokenAddress() public view returns (address) {
+    function getFractionalAddress() public view returns (address) {
         return address(fractional);
     }
 
     function balanceOfFractional(address _holder) public view returns (uint256) {
         return fractional.balanceOf(_holder);
+    }
+
+    function extendToDutchAuction(address auctionAddress, uint newSupply) public isOwner onlyEnded {
+        fractional.mint(newSupply, auctionAddress);
     }
 
 }

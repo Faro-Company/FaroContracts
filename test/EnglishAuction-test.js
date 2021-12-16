@@ -429,7 +429,7 @@ describe("EnglishAuction", function () {
       EngAuction = await ethers.getContractFactory("EnglishAuction");
       engAuction = await EngAuction.attach(auction);
       participantSigner = engAuction.connect(this.wallets[2]);
-      tx = await participantSigner.triggerEnd();
+      tx = await participantSigner.end();
       tx.wait();
       expect((await participantSigner.getAuctionState()).toString()).to.equal(
         AUCTION_ENDED_STATE

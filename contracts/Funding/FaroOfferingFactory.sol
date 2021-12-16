@@ -5,11 +5,11 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import "@openzeppelin/contracts/token/ERC721/utils/ERC721Holder.sol";
-import "./OfferableERC721TokenVault.sol";
+import "./FaroOffering.sol";
 import "./Proxy.sol";
 
 
-contract OfferableERC721VaultFactory is Ownable, Pausable {
+contract FaroOfferingFactory is Ownable, Pausable {
     /// @notice the number of ERC721 vaults
     uint256 private vaultCount;
 
@@ -19,7 +19,7 @@ contract OfferableERC721VaultFactory is Ownable, Pausable {
     address[] public vaults;
      
 
-    address logic = address(new OfferableERC721TokenVault());
+    address logic = address(new FaroOffering());
 
     event Mint(address indexed token, uint256 price, address vault, uint256 vaultId);
 

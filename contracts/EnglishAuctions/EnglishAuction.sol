@@ -107,7 +107,7 @@ contract EnglishAuction {
         return auctionState;
     }
 
-    function triggerEnd() public {
+    function end() public {
         _end();
     }
 
@@ -118,37 +118,16 @@ contract EnglishAuction {
     }
 
     function bid() public payable onlyLive onlyNotOwner returns (bool success) {
-        // reject payments of 0 ETH
-       require(msg.value > floorPrice, "Cannot send bid less than floor price.");
-
-        // calculate the user's total bid based on the current amount they've sent to the contract
-        // plus whatever has been sent with this transaction
+        require(msg.value > floorPrice, "Cannot send bid less than floor price.");
         uint256 newBid = bids[msg.sender] + msg.value;
-
-        // if the user isn't even willing to overbid the highest binding bid, there's nothing for us
-        // to do except revert the transaction.
         require(newBid > highestBindingBid, "Bid amount is less than highest");
-
-        // grab the previous highest bid (before updating bids, in case msg.sender is the
-        // highestBidder and is just increasing their maximum bid).
         uint256 highestBid = bids[highestBidder];
         bids[msg.sender] = newBid;
 
         if (newBid <= highestBid) {
-            // if the user has overbid the highestBindingBid but not the highestBid, we simply
-            // increase the highestBindingBid and leave highestBidder alone.
-
-            // note that this case is impossible if msg.sender == highestBidder because you can never
-            // bid less ETH than you've already bid.
-
             highestBindingBid = min(newBid + bidIncrement, highestBid);
-        } else {
-            // if msg.sender is already the highest bidder, they must simply be wanting to raise
-            // their maximum bid, in which case we shouldn't increase the highestBindingBid.
-
-            // if the user is NOT highestBidder, and has overbid highestBid completely, we set them
-            // as the new highestBidder and recalculate highestBindingBid.
-
+        }
+        else {
             if (msg.sender != highestBidder) {
                 highestBidder = msg.sender;
                 highestBindingBid = min(newBid, highestBid + bidIncrement);
@@ -192,34 +171,25 @@ contract EnglishAuction {
         uint256 withdrawalAmount;
         require(bids[msg.sender] > 0, "Sender has no bids to withdraw.");
         if (auctionState == AuctionState.AuctionCancelled) {
-            // if the auction was cancelled, everyone should simply be allowed to withdraw their funds
             withdrawalAccount = msg.sender;
             withdrawalAmount = bids[withdrawalAccount];
 
         } else {
-            // the auction finished without being cancelled
-
             if (msg.sender == owner) {
-                // the auction's owner should be allowed to withdraw the highestBindingBid
                 withdrawalAccount = highestBidder;
                 withdrawalAmount = highestBindingBid;
                 ownerHasWithdrawn = true;
 
             } else if (msg.sender == highestBidder) {
-                // the highest bidder should only be allowed to withdraw the difference between their
-                // highest bid and the highestBindingBid
                 withdrawalAccount = highestBidder;
                 withdrawalAmount = bids[highestBidder] - highestBindingBid;
             } else {
-                // anyone who participated but did not win the auction should be allowed to withdraw
-                // the full amount of their funds
                 withdrawalAccount = msg.sender;
                 withdrawalAmount = bids[withdrawalAccount];
             }
         }
         require(withdrawalAmount > 0, "Withdrawal amount cannot be 0.");
         bids[withdrawalAccount] -= withdrawalAmount;
-        // send the funds
         require(payable(withdrawalAccount).send(withdrawalAmount), "Transfer amount not successful");
         emit Withdrawal(msg.sender, withdrawalAccount, withdrawalAmount);
     }

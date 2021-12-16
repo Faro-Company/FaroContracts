@@ -1,32 +1,29 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import "../utils.sol";
-import "../Funding/OfferableERC721TokenVault.sol";
+
+import "../Funding/FaroOffering.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 
 contract DutchAuction {
 
-    Utils utils = new Utils();
-
-    /// @notice usdc address
-    address public constant USDC = 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48;
-
-    /// @notice An event emitted when bid happens
-    event Bid(address indexed bidder, uint amount);
-    uint constant HOURS_IN_MILLISECS = 3600000;
+    uint constant HOURS_IN_SECS = 3600;
     uint constant MAX_TIME_TICKS_ALLOWED = 1440;
 
-    OfferableERC721TokenVault public immutable offerableOwnership;
-    uint maxTokensSold;
-    uint remaining;
+    FaroOffering public immutable offerableOwnership;
+    FaroFractional public immutable fractional;
+    mapping (address => uint) public eligibleBidders;
+
+    uint256 remaining;
+    uint256 supply;
 
     uint256 auctionStopPrice;
     uint256 auctionCurrentPrice;
     uint256[] priceUpdateArray;
+    uint256 tickSize;
 
-    address payable public wallet;
+    address payable public projectFundingAddress;
 
     uint256 public startTime;
     uint256 public endTime;
@@ -35,16 +32,14 @@ contract DutchAuction {
 
     AuctionState public auctionState;
 
+    /// @notice An event emitted when bid happens
+    event Bid(address indexed bidder, uint amount);
+
     enum AuctionState {
         AuctionDeployed,
         AuctionStarted,
-        AuctionEnded
-    }
-
-    modifier atState(AuctionState _auctionState) {
-        if (auctionState != _auctionState)
-            revert("Auction is in unexpected state.");
-        _;
+        AuctionEnded,
+        AuctionCancelled
     }
 
     modifier isOwner() {
@@ -54,64 +49,84 @@ contract DutchAuction {
     }
 
     modifier isNotOwner() {
-        if (msg.sender == wallet)
-            revert("Owner is not allowed to bid");
+        require(msg.sender == wallet, "Owner is not allowed to bid");
+        _;
+    }
+
+    modifier onlyStarted() {
+        require(auctionState == AuctionState.AuctionStarted, "Auction is not live.");
         _;
     }
 
 
     modifier updateAuctionState() {
-        if (auctionState == AuctionState.AuctionStarted && (block.timestamp > endTime || calculatePrice() <= auctionStopPrice))
-            finalizeAuction();
+        if (block.timestamp > endTime) {
+            _end();
+        }
         _;
     }
 
-    constructor(address vaultToken, uint[] memory _priceUpdateArray) {
-        require(_priceUpdateArray.length <= MAX_TIME_TICKS_ALLOWED, "Too large price update array");
-        priceUpdateArray = _priceUpdateArray;
-        offerableOwnership = OfferableERC721TokenVault(vaultToken);
-        auctionCurrentPrice = priceUpdateArray[0];
-        auctionState = AuctionState.AuctionDeployed;
-        remaining = maxTokensSold;
+    modifier updatePrice() {
+        uint256 timeTick = (block.timestamp - startTime) / HOURS_IN_SECS;
+        if (timeTick > tickSize) {
+            timeTick = tickSize;
+        }
+        auctionCurrentPrice = priceUpdateArray[timeTick];
+        _;
     }
 
-    function startAuction() public isOwner atState(AuctionState.AuctionDeployed) {
+    function getCurrentPrice() public updatePrice {
+        return auctionCurrentPrice;
+    }
+
+    constructor(address _vaultToken, uint[] memory _priceUpdateArray, uint _supply,
+        address[] memory _eligibleBidders) {
+        require(_priceUpdateArray.length <= MAX_TIME_TICKS_ALLOWED, "Too large price update array");
+        priceUpdateArray = _priceUpdateArray;
+        offerableOwnership = FaroOffering(_vaultToken);
+        fractional = offerableOwnership.getFractionalAddress();
+        auctionCurrentPrice = priceUpdateArray[0];
+        auctionState = AuctionState.AuctionDeployed;
+        supply = _supply;
+        createEligibleBiddersTable(_eligibleBidders);
+    }
+
+    function createEligibleBiddersTable(address[] memory _eligibleBidders) {
+        for (uint i = 0; i < _eligibleBidders.length; i++) {
+            eligibleBidders[_eligibleBidders[i]] = 1;
+        }
+    }
+
+    function startAuction() public isOwner {
+        require(auctionState == AuctionState.AuctionDeployed, "Auction is already started.");
         auctionStopPrice = offerableOwnership.getListingPrice();
-        maxTokensSold = offerableOwnership.getRemaining();
-        wallet = offerableOwnership.getProjectFundingAddress();
+        offerableOwnership.extendToDutchAuction(address(this), supply);
+        projectFundingAddress = offerableOwnership.getProjectFundingAddress();
         startTime = block.timestamp;
         endTime = startTime + priceUpdateArray.length * 1 hours;
         auctionState = AuctionState.AuctionStarted;
     }
 
-    function calculatePrice() public returns (uint256) {
-        uint256 timeTick = (block.timestamp - startTime) % HOURS_IN_MILLISECS;
-        auctionCurrentPrice = priceUpdateArray[timeTick];
-        return auctionCurrentPrice;
-    }
-
-    function bid(uint256 _amount) public payable atState(
-        AuctionState.AuctionStarted) isNotOwner updateAuctionState {
+    function bid(uint256 _amount) public payable isNotOwner onlyStarted updateAuctionState updatePrice {
+        require(eligibleBidders[msg.sender] == 1, "Bidder is not eligible");
         require(msg.value >= auctionCurrentPrice, "Bid value is less than current price.");
         require(_amount <= remaining, "Bid amount is higher than remaining amount.");
-        remaining = remaining - _amount;
+        remaining -= _amount;
         bids[msg.sender] += msg.value;
-        require(utils.sendStableCoin(msg.sender, wallet,
-            msg.value), "Could not send the funds to the project offerings address.");
-        IERC20(address(offerableOwnership)).transferFrom(wallet, msg.sender, _amount);
+        require(payable(projectFundingAddress).send(msg.value),
+            "Could not send the funds to the project offerings address.");
+        fractional.transfer(msg.sender, _amount);
         emit Bid(msg.sender, _amount);
         if (remaining == 0) {
-            finalizeAuction();
+            _end();
         }
     }
 
-    function finalizeAuction() private {
-        auctionState = AuctionState.AuctionEnded;
+    function end() public isOwner {
+        _end();
     }
 
-    function withdraw() public atState(AuctionState.AuctionEnded) {
-        require(bids[msg.sender] > 0, "Not among bidders.");
-        require(utils.sendStableCoin(wallet, msg.sender, bids[msg.sender] - auctionCurrentPrice),
-            "Could not send change to the bidding participant.");
+    function _end() private {
+        auctionState = AuctionState.AuctionEnded;
     }
 }

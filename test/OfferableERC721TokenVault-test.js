@@ -13,7 +13,7 @@ const ACCOUNTS_NUM = 20;
 const PARTICIPANTS_NUM = 17;
 const BUY_AMOUNT = 10;
 
-describe("OfferableERC721TokenVault", function () {
+describe("FaroOffering", function () {
   before(async function () {
     await ethers.provider.send("hardhat_reset");
     const accounts = await ethers.provider.listAccounts();
@@ -61,7 +61,7 @@ describe("OfferableERC721TokenVault", function () {
     await mintTx.wait();
 
     const ERCVaultFactory = await ethers.getContractFactory(
-      "OfferableERC721VaultFactory"
+      "FaroOfferingFactory"
     );
     this.ercVaultFactory = await ERCVaultFactory.deploy();
     await this.ercVaultFactory.deployed();
@@ -92,9 +92,7 @@ describe("OfferableERC721TokenVault", function () {
     );
     await tx.wait();
     this.offeringAddress = await this.factoryWithSigner.getVault(0);
-    this.OfferingVault = await ethers.getContractFactory(
-      "OfferableERC721TokenVault"
-    );
+    this.OfferingVault = await ethers.getContractFactory("FaroOffering");
     this.offeringVault = await this.OfferingVault.attach(this.offeringAddress);
     this.ownerWithOffering = this.offeringVault.connect(
       this.projectFundRaisingSigner
