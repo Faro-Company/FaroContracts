@@ -17,6 +17,7 @@ contract DutchAuction {
 
     uint256 remaining;
     uint256 supply;
+    address public owner;
 
     uint256 auctionStopPrice;
     uint256 auctionCurrentPrice;
@@ -43,8 +44,7 @@ contract DutchAuction {
     }
 
     modifier isOwner() {
-        if (msg.sender != wallet)
-            revert("Sender is not the project owner");
+        require(msg.sender == owner, "This method can only be called by owner");
         _;
     }
 
@@ -75,6 +75,10 @@ contract DutchAuction {
         _;
     }
 
+    function getAuctionState() public returns(AuctionState) {
+        return auctionState;
+    }
+
     function getCurrentPrice() public updatePrice {
         return auctionCurrentPrice;
     }
@@ -84,6 +88,8 @@ contract DutchAuction {
         require(_priceUpdateArray.length <= MAX_TIME_TICKS_ALLOWED, "Too large price update array");
         priceUpdateArray = _priceUpdateArray;
         offerableOwnership = FaroOffering(_vaultToken);
+        require(msg.sender == offerableOwnership.owner, "Auction can only be created by offering owner");
+        owner = msg.sender;
         fractional = offerableOwnership.getFractionalAddress();
         auctionCurrentPrice = priceUpdateArray[0];
         auctionState = AuctionState.AuctionDeployed;

@@ -18,7 +18,7 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
     /// @notice The project's funding address where blockchain's native currency is to be sent
     address payable private projectFundingAddress;
 
-    address private owner;
+    address public owner;
 
     /// @notice Price of the share
     uint256 private listingPrice;
