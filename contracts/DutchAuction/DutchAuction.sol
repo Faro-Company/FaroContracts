@@ -39,8 +39,7 @@ contract DutchAuction {
     enum AuctionState {
         AuctionDeployed,
         AuctionStarted,
-        AuctionEnded,
-        AuctionCancelled
+        AuctionEnded
     }
 
     modifier isOwner() {
@@ -83,6 +82,10 @@ contract DutchAuction {
         return auctionCurrentPrice;
     }
 
+    function getRemaining() public view returns(uint) {
+        return remaining;
+    }
+
     constructor(address _vaultToken, uint[] memory _priceUpdateArray, uint _supply,
         address[] memory _eligibleBidders) {
         require(_priceUpdateArray.length <= MAX_TIME_TICKS_ALLOWED, "Too large price update array");
@@ -118,7 +121,6 @@ contract DutchAuction {
         require(msg.value >= auctionCurrentPrice, "Bid value is less than current price.");
         require(_amount <= remaining, "Bid amount is higher than remaining amount.");
         remaining -= _amount;
-        bids[msg.sender] += msg.value;
         require(payable(projectFundingAddress).send(msg.value),
             "Could not send the funds to the project offerings address.");
         fractional.transfer(msg.sender, _amount);
@@ -126,6 +128,10 @@ contract DutchAuction {
         if (remaining == 0) {
             _end();
         }
+    }
+
+    function getFractionalBalance(address funder) public view returns(uint256) {
+        return fractional.balanceOf(funder);
     }
 
     function end() public isOwner {

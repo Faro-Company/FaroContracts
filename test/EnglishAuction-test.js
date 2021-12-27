@@ -167,7 +167,12 @@ describe("EnglishAuction", function () {
     const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
     const englishAuction = await EnglishAuction.attach(lastAuction);
     const participantSigner = englishAuction.connect(this.wallets[0]);
-    await expectRevert(participantSigner.bid(), "Auction is not live.");
+    await expectRevert(
+      participantSigner.bid({
+        value: ethers.utils.parseEther(BID_PRICE_MORE_THAN_FLOOR),
+      }),
+      "Auction is not live."
+    );
   });
 
   it("Auction can be started by owner", async function () {

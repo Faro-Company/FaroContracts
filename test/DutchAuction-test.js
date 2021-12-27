@@ -1,23 +1,29 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { expectRevert } = require("@openzeppelin/test-helpers");
+const timeMachine = require("ether-time-traveler");
 
 const NAME = "FARO Journey Starting";
 const SYMBOL = "FAROM";
 const TOKEN_URI = "HERE";
 const LIST_PRICE = 5;
-const LIST_PRICE_AS_ETH = ethers.utils.parseEther("5");
+const LIST_PRICE_AS_ETH = ethers.utils.parseEther(LIST_PRICE.toString());
 const LISTING_PERIOD = 30;
 
 const ACCOUNTS_NUM = 20;
 const PARTICIPANTS_NUM = 17;
 const BUY_AMOUNT = 10;
 const SUPPLY = 1000;
+const PRICE_DECREMENT = 1;
 
 const AUCTION_STARTED_STATE = "1";
 const AUCTION_DEPLOYED_STATE = "0";
 const AUCTION_ENDED_STATE = "2";
-const AUCTION_CANCELLED_STATE = "3";
+
+const SECS_IN_HOUR = 3600;
+const FAST_FORWARD_PERIOD1 = 5;
+const FAST_FORWARD_PERIOD2 = 10;
+const FAST_FORWARD_PERIOD3 = 30 - FAST_FORWARD_PERIOD1 - FAST_FORWARD_PERIOD2;
 
 function getPriceChangeArray(startPrice, timeTicks) {
   const priceChangeArray = [];
@@ -37,6 +43,7 @@ describe("DutchAuction", function () {
     this.ownerSigner = await ethers.getSigner(this.owner);
     this.projectFundRaisingSigner = await ethers.getSigner(this.user);
     this.nonOwnerSigner = await ethers.getSigner(this.user2);
+    this.nonOwnerSignerAgain;
 
     this.supply = 1000;
 
@@ -215,5 +222,313 @@ describe("DutchAuction", function () {
     ).to.equal(this.listingPrice.toString());
   });
 
-  it("Owner cannot bid", async function () {});
+  it("Owner cannot bid", async function () {
+    const auction =
+      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const DutchAuction = await ethers.getContractFactory("DutchAuction");
+    const dutchAuctionObject = await DutchAuction.attach(auction);
+    const dutchAuctionOwnerSigner = dutchAuctionObject.connect(
+      this.ownerSigner
+    );
+    const currentPrice = await dutchAuctionOwnerSigner.getCurrentPrice();
+    await expectRevert(
+      dutchAuctionOwnerSigner.bid(BUY_AMOUNT, {
+        value: currentPrice,
+      }),
+      "Owner is not allowed to bid"
+    );
+  });
+
+  it("Non-owner cannot bid under current price", async function () {
+    const auction =
+      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const DutchAuction = await ethers.getContractFactory("DutchAuction");
+    const dutchAuctionObject = await DutchAuction.attach(auction);
+    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      this.nonOwnerSigner
+    );
+    const currentPrice = await dutchAuctionNonOwnerSigner.getCurrentPrice();
+    await expectRevert(
+      dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+        value: currentPrice - PRICE_DECREMENT,
+      }),
+      "Bid value is less than current price."
+    );
+  });
+
+  it("Non-owner can bid", async function () {
+    const auction =
+      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const DutchAuction = await ethers.getContractFactory("DutchAuction");
+    const dutchAuctionObject = await DutchAuction.attach(auction);
+    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      this.nonOwnerSigner
+    );
+    const projectFundingAddress =
+      await dutchAuctionNonOwnerSigner.projectFundingAddress();
+    const previousBalance = ethers.provider.getBalance(projectFundingAddress);
+    const currentPrice = await dutchAuctionNonOwnerSigner.getCurrentPrice();
+    const bidTx = await dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+      value: currentPrice,
+    });
+    await bidTx.wait();
+    expect(
+      previousBalance +
+        ethers.utils.parseEther(currentPrice * BUY_AMOUNT) -
+        -(await ethers.provider.getBalance(projectFundingAddress))
+    ).lessThan(Math.pow(10, 9));
+    expect(
+      (await dutchAuctionNonOwnerSigner.getFractionalBalance()).toString()
+    ).to.equal(BUY_AMOUNT.toString());
+    expect(
+      (await dutchAuctionNonOwnerSigner.getRemaining()).toString()
+    ).to.equal((SUPPLY - BUY_AMOUNT).toString());
+  });
+
+  it("Can buy again", async function () {
+    const auction =
+      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const DutchAuction = await ethers.getContractFactory("DutchAuction");
+    const dutchAuctionObject = await DutchAuction.attach(auction);
+    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      this.nonOwnerSigner
+    );
+    const projectFundingAddress =
+      await dutchAuctionNonOwnerSigner.projectFundingAddress();
+    const previousBalance = ethers.provider.getBalance(projectFundingAddress);
+    const currentPrice = await dutchAuctionNonOwnerSigner.getCurrentPrice();
+    const bidTx = await dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+      value: currentPrice,
+    });
+    await bidTx.wait();
+    const twiceBuyAmount = 2 * BUY_AMOUNT;
+    expect(
+      previousBalance +
+        ethers.utils.parseEther(currentPrice * BUY_AMOUNT) -
+        (await ethers.provider.getBalance(projectFundingAddress))
+    ).lessThan(Math.pow(10, 9));
+    expect(
+      (await dutchAuctionNonOwnerSigner.getFractionalBalance()).toString()
+    ).to.equal(twiceBuyAmount.toString());
+    expect(
+      (await dutchAuctionNonOwnerSigner.getRemaining()).toString()
+    ).to.equal((SUPPLY - twiceBuyAmount).toString());
+  });
+
+  it("Another user can buy ", async function () {
+    const auction =
+      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const DutchAuction = await ethers.getContractFactory("DutchAuction");
+    const dutchAuctionObject = await DutchAuction.attach(auction);
+    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      this.nonOwnerSigner2
+    );
+    const projectFundingAddress =
+      await dutchAuctionNonOwnerSigner.projectFundingAddress();
+    const previousBalance = ethers.provider.getBalance(projectFundingAddress);
+    const currentPrice = await dutchAuctionNonOwnerSigner.getCurrentPrice();
+    const bidTx = await dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+      value: currentPrice,
+    });
+    await bidTx.wait();
+    const tripleBuyAmount = 3 * BUY_AMOUNT;
+    expect(
+      previousBalance +
+        ethers.utils.parseEther(currentPrice * BUY_AMOUNT) -
+        (await ethers.provider.getBalance(projectFundingAddress))
+    ).lessThan(Math.pow(10, 9));
+    expect(
+      (await dutchAuctionNonOwnerSigner.getFractionalBalance()).toString()
+    ).to.equal(BUY_AMOUNT.toString());
+    expect(
+      (await dutchAuctionNonOwnerSigner.getRemaining()).toString()
+    ).to.equal((SUPPLY - tripleBuyAmount).toString());
+  });
+
+  it("Price changes over time ", async function () {
+    await timeMachine.advanceTimeAndBlock(
+      ethers.provider,
+      FAST_FORWARD_PERIOD1 * SECS_IN_HOUR
+    );
+    const auction =
+      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const DutchAuction = await ethers.getContractFactory("DutchAuction");
+    const dutchAuctionObject = await DutchAuction.attach(auction);
+    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      this.nonOwnerSigner2
+    );
+    expect(
+      (await dutchAuctionNonOwnerSigner.getCurrentPrice()).toString()
+    ).to.equal(this.ethPriceChanges[FAST_FORWARD_PERIOD1].toString());
+  });
+
+  it("Can bid with new price", async function () {
+    const auction =
+      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const DutchAuction = await ethers.getContractFactory("DutchAuction");
+    const dutchAuctionObject = await DutchAuction.attach(auction);
+    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      this.nonOwnerSigner2
+    );
+    const projectFundingAddress =
+      await dutchAuctionNonOwnerSigner.projectFundingAddress();
+    const previousBalance = ethers.provider.getBalance(projectFundingAddress);
+    const currentPrice = await dutchAuctionNonOwnerSigner.getCurrentPrice();
+    expect(currentPrice.toString()).to.equal(
+      this.ethPriceChanges[5].toString()
+    );
+    const bidTx = await dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+      value: currentPrice,
+    });
+    await bidTx.wait();
+    const twiceBuyAmount = 2 * BUY_AMOUNT;
+    expect(
+      previousBalance +
+        ethers.utils.parseEther(currentPrice * BUY_AMOUNT) -
+        -(await ethers.provider.getBalance(projectFundingAddress))
+    ).lessThan(Math.pow(10, 9));
+    expect(
+      (await dutchAuctionNonOwnerSigner.getFractionalBalance()).toString()
+    ).to.equal(twiceBuyAmount.toString());
+    expect(
+      (await dutchAuctionNonOwnerSigner.getRemaining()).toString()
+    ).to.equal((SUPPLY - 2 * twiceBuyAmount).toString());
+  });
+
+  it("Cannot buy with less than that but can with higher", async function () {
+    const auction =
+      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const DutchAuction = await ethers.getContractFactory("DutchAuction");
+    const dutchAuctionObject = await DutchAuction.attach(auction);
+    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      this.nonOwnerSigner2
+    );
+    const projectFundingAddress =
+      await dutchAuctionNonOwnerSigner.projectFundingAddress();
+    const previousBalance = ethers.provider.getBalance(projectFundingAddress);
+    const currentPrice = await dutchAuctionNonOwnerSigner.getCurrentPrice();
+    await expectRevert(
+      dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+        value: currentPrice - PRICE_DECREMENT,
+      }),
+      "Bid value is less than current price."
+    );
+    const bidTx = await dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+      value: currentPrice * 3,
+    });
+    await bidTx.wait();
+    const tripleBuyAmount = 3 * BUY_AMOUNT;
+    expect(
+      previousBalance +
+        ethers.utils.parseEther(currentPrice * BUY_AMOUNT) -
+        -(await ethers.provider.getBalance(projectFundingAddress))
+    ).lessThan(Math.pow(10, 9));
+    expect(
+      (await dutchAuctionNonOwnerSigner.getFractionalBalance()).toString()
+    ).to.equal(tripleBuyAmount.toString());
+    expect(
+      (await dutchAuctionNonOwnerSigner.getRemaining()).toString()
+    ).to.equal((SUPPLY - 5 * BUY_AMOUNT).toString());
+  });
+
+  it("Price changes over time again", async function () {
+    await timeMachine.advanceTimeAndBlock(
+      ethers.provider,
+      FAST_FORWARD_PERIOD2 * SECS_IN_HOUR
+    );
+    const auction =
+      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const DutchAuction = await ethers.getContractFactory("DutchAuction");
+    const dutchAuctionObject = await DutchAuction.attach(auction);
+    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      this.nonOwnerSigner2
+    );
+    expect(
+      (await dutchAuctionNonOwnerSigner.getCurrentPrice()).toString()
+    ).to.equal(
+      this.ethPriceChanges[
+        FAST_FORWARD_PERIOD1 + FAST_FORWARD_PERIOD2
+      ].toString()
+    );
+  });
+
+  it("Cannot buy with less than that but can with higher again", async function () {
+    const auction =
+      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const DutchAuction = await ethers.getContractFactory("DutchAuction");
+    const dutchAuctionObject = await DutchAuction.attach(auction);
+    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      this.nonOwnerSigner2
+    );
+    const projectFundingAddress =
+      await dutchAuctionNonOwnerSigner.projectFundingAddress();
+    const previousBalance = ethers.provider.getBalance(projectFundingAddress);
+    const currentPrice = await dutchAuctionNonOwnerSigner.getCurrentPrice();
+    await expectRevert(
+      dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+        value: currentPrice - PRICE_DECREMENT,
+      }),
+      "Bid value is less than current price."
+    );
+    const bidTx = await dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+      value: currentPrice,
+    });
+    await bidTx.wait();
+    const quadrupleBuyAmount = 4 * BUY_AMOUNT;
+    expect(
+      previousBalance +
+        ethers.utils.parseEther(currentPrice * BUY_AMOUNT) -
+        -(await ethers.provider.getBalance(projectFundingAddress))
+    ).lessThan(Math.pow(10, 9));
+    expect(
+      (await dutchAuctionNonOwnerSigner.getFractionalBalance()).toString()
+    ).to.equal(quadrupleBuyAmount.toString());
+    expect(
+      (await dutchAuctionNonOwnerSigner.getRemaining()).toString()
+    ).to.equal((SUPPLY - 6 * BUY_AMOUNT).toString());
+  });
+
+  it("Price reaches offering price, the auction ends automatically", async function () {
+    await timeMachine.advanceTimeAndBlock(
+      ethers.provider,
+      FAST_FORWARD_PERIOD3 * SECS_IN_HOUR
+    );
+    const auction =
+      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const DutchAuction = await ethers.getContractFactory("DutchAuction");
+    const dutchAuctionObject = await DutchAuction.attach(auction);
+    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      this.nonOwnerSigner2
+    );
+    expect(
+      (await dutchAuctionNonOwnerSigner.getCurrentPrice()).toString()
+    ).to.equal(
+      this.ethPriceChanges[
+        FAST_FORWARD_PERIOD1 + FAST_FORWARD_PERIOD2 + FAST_FORWARD_PERIOD3
+      ].toString()
+    );
+    expect(
+      (await dutchAuctionNonOwnerSigner.getAuctionState()).toString()
+    ).to.equal(AUCTION_ENDED_STATE);
+  });
+
+  it("Cannot bid on ended auction ", async function () {
+    const auction =
+      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const DutchAuction = await ethers.getContractFactory("DutchAuction");
+    const dutchAuctionObject = await DutchAuction.attach(auction);
+    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      this.nonOwnerSigner2
+    );
+    const projectFundingAddress =
+      await dutchAuctionNonOwnerSigner.projectFundingAddress();
+    const previousBalance = ethers.provider.getBalance(projectFundingAddress);
+    const currentPrice = await dutchAuctionNonOwnerSigner.getCurrentPrice();
+    await expectRevert(
+      dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+        value: currentPrice - PRICE_DECREMENT,
+      }),
+      "Auction is not live."
+    );
+  });
 });
