@@ -15,7 +15,6 @@ contract FaroEnglishAuction {
     uint256 auctionPeriodInSeconds;
     uint256 public floorPrice;
     
-    /// @notice the ERC721 token address of the vault's token
     ERC721 public token;
     uint256 public tokenId;
     

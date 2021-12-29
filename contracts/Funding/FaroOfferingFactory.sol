@@ -10,12 +10,11 @@ import "./Proxy.sol";
 
 
 contract FaroOfferingFactory is Ownable, Pausable {
-    /// @notice the number of ERC721 vaults
+
     uint256 private vaultCount;
 
     uint private ID = 1;
 
-    /// @notice the mapping of vault number to vault contract
     address[] public vaults;
      
 
@@ -23,15 +22,6 @@ contract FaroOfferingFactory is Ownable, Pausable {
 
     event Mint(address indexed token, uint256 price, address vault, uint256 vaultId);
 
-    /// @notice the function to mint a new vault
-    /// @param _name the desired name of the vault
-    /// @param _symbol the desired sumbol of the vault
-    /// @param _token the ERC721 token address to the NFT
-    /// @param _listPrice the initial price of the NFT
-    /// @return the ID of the vault
-    /// address _token, address _projectFundingAddress, uint256 _id,
-    //        uint256 _supply, uint256 _listingPrice, string memory _name, string memory _symbol,
-    //        address[] memory funderAddresses, uint[] memory allocations
     function mint(address _token, address payable _projectFundingAddress, address _owner,
         uint256 _supply, uint256 _listPrice, uint _listingPeriod,
         string memory _name, string memory _symbol, address[] memory _funderAddresses,

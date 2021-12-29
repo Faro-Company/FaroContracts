@@ -10,42 +10,26 @@ import "./FaroFractional.sol";
 
 contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
 
-    /// @notice the ERC721 token address of the vault's token
     address private token;
-
     FaroFractional private fractional;
 
-    /// @notice The project's funding address where blockchain's native currency is to be sent
     address payable private projectFundingAddress;
-
     address public owner;
 
-    /// @notice Price of the share
     uint256 private listingPrice;
-
-    /// @notice the length of auctions
     uint256 private listingPeriod;
-
-    /// @notice the unix timestamp end time of the token auction
     uint256 private listingEnd;
 
     enum OfferingState { inactive, live, ended}
 
     OfferingState private offeringState;
 
-    /// @notice a mapping of users to their funding amounts
     mapping(address => uint256) private funders;
-
 
     uint256 private remaining;
 
-    /// @notice An event emitted when a listing starts
     event Start(address starter);
-
-    /// @notice An event emitted when bid happens
     event Bid(address bidder, uint256 amount);
-
-    /// @notice An event emitted when end happens
     event End();
 
     modifier isOwner() {
@@ -115,7 +99,6 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
         return total;
     }
 
-    /// @notice Start the offering
     function start() external isOwner {
         require(offeringState == OfferingState.inactive, "Offering is already started");
         listingEnd = block.timestamp + listingPeriod;
@@ -123,7 +106,6 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
         emit Start(msg.sender);
     }
 
-    /// @notice an external function to bid on purchasing the vaults NFT.
     function bid(uint _amount) external payable timeTransition {
         uint256 totalToPay = _amount * listingPrice;
         require(!paused(), "The bid is paused.");
@@ -149,7 +131,6 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
         emit End();
     }
 
-    /// @notice an external function to end an auction
     function end() external isOwner {
         _end();
     }
