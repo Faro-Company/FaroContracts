@@ -20,10 +20,10 @@ const AUCTION_STARTED_STATE = "1";
 const AUCTION_DEPLOYED_STATE = "0";
 const AUCTION_ENDED_STATE = "2";
 
-const SECS_IN_HOUR = 3600;
+const SECS_IN_DAY = 86400;
 const FAST_FORWARD_PERIOD1 = 5;
 const FAST_FORWARD_PERIOD2 = 10;
-const FAST_FORWARD_PERIOD3 = 167 - FAST_FORWARD_PERIOD1 - FAST_FORWARD_PERIOD2;
+const FAST_FORWARD_PERIOD3 = 30 - FAST_FORWARD_PERIOD1 - FAST_FORWARD_PERIOD2;
 
 function getPriceChangeArray(endPrice, timeTicks) {
   const priceChangeArray = [];
@@ -148,7 +148,7 @@ describe("FaroDutchAuction", function () {
     this.startPrice = ethers.utils.parseEther(
       (2 * this.listingPrice).toString()
     );
-    const auctionLength = 168;
+    const auctionLength = 31;
     const priceChanges = getPriceChangeArray(this.listingPrice, auctionLength);
     this.ethPriceChanges = [];
     for (let i = 0; i < priceChanges.length; i++) {
@@ -447,7 +447,7 @@ describe("FaroDutchAuction", function () {
   it("Price changes over time ", async function () {
     await timeMachine.advanceTimeAndBlock(
       ethers.provider,
-      FAST_FORWARD_PERIOD1 * SECS_IN_HOUR
+      FAST_FORWARD_PERIOD1 * SECS_IN_DAY
     );
     const auction =
       await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
@@ -564,7 +564,7 @@ describe("FaroDutchAuction", function () {
   it("Price changes over time again", async function () {
     await timeMachine.advanceTimeAndBlock(
       ethers.provider,
-      FAST_FORWARD_PERIOD2 * SECS_IN_HOUR
+      FAST_FORWARD_PERIOD2 * SECS_IN_DAY
     );
     const auction =
       await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
@@ -640,7 +640,7 @@ describe("FaroDutchAuction", function () {
   it("Price reaches offering price, the auction ends automatically", async function () {
     await timeMachine.advanceTimeAndBlock(
       ethers.provider,
-      FAST_FORWARD_PERIOD3 * SECS_IN_HOUR
+      FAST_FORWARD_PERIOD3 * SECS_IN_DAY
     );
     const auction =
       await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();

@@ -8,7 +8,7 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract FaroDutchAuction {
 
-    uint constant HOURS_IN_SECS = 3600;
+    uint constant DAYS_IN_SECS = 86400;
     uint constant MAX_TIME_TICKS_ALLOWED = 1440;
 
     FaroOffering public offerableOwnership;
@@ -67,7 +67,7 @@ contract FaroDutchAuction {
     }
 
     modifier updatePrice() {
-        timeTick = (block.timestamp - startTime) / HOURS_IN_SECS;
+        timeTick = (block.timestamp - startTime) / DAYS_IN_SECS;
         if (timeTick > tickSize) {
             timeTick = tickSize;
         }
@@ -120,7 +120,7 @@ contract FaroDutchAuction {
         require(offerableOwnership.getFractionalBalance(address(this)) == supply,
             "Fractional tokens are not minted to Dutch auction account.");
         startTime = block.timestamp;
-        endTime = startTime + priceUpdateArray.length * 1 hours;
+        endTime = startTime + priceUpdateArray.length * 1 days;
         auctionState = AuctionState.AuctionStarted;
     }
 

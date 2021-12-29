@@ -4,21 +4,43 @@ const { ethers } = require("hardhat");
 async function main() {
   // We get the contract to deploy
 
-  const KTLTokenContract = await ethers.getContractFactory("KTLOToken");
-  console.log("Deploying KTLO Token contract...");
-  const kTLTokenContract = await KTLTokenContract.deploy();
-  await kTLTokenContract.deployed();
-  console.log("KTLO Token contract deployed to:", kTLTokenContract.address);
+  const FaroTokenContract = await ethers.getContractFactory("FaroToken");
+  console.log("Deploying Faro Token contract...");
+  const faroTokenContract = await FaroTokenContract.deploy();
+  await faroTokenContract.deployed();
+  console.log("Faro Token contract deployed to:", faroTokenContract.address);
 
-  const ERCVaultFactory = await ethers.getContractFactory(
-    "OfferableERC721VaultFactory"
+  const FaroOfferingFactory = await ethers.getContractFactory(
+    "FaroOfferingFactory"
   );
-  console.log("Deploying OfferableTokenVaultFactory...");
-  const ercVaultFactory = await ERCVaultFactory.deploy();
-  await ercVaultFactory.deployed();
+  console.log("Deploying OfferingFactory...");
+  const faroOfferingFactory = await FaroOfferingFactory.deploy();
+  await faroOfferingFactory.deployed();
   console.log(
     "OfferableTokenVaultFactory deployed to:",
-    ercVaultFactory.address
+    faroOfferingFactory.address
+  );
+
+  const FaroEnglishAuctionFactory = await ethers.getContractFactory(
+    "FaroEnglishAuctionFactory"
+  );
+  console.log("Deploying FaroEnglishAuctionFactory");
+  const faroEnglishAuctionFactory = await FaroEnglishAuctionFactory.deploy();
+  await faroEnglishAuctionFactory.deployed();
+  console.log(
+    "FaroEnglishAuctionFactory deployed to:",
+    faroEnglishAuctionFactory.address
+  );
+
+  const FaroDutchAuctionFactory = await ethers.getContractFactory(
+    "FaroDutchAuctionFactory"
+  );
+  console.log("Deploying FaroDutchAuctionFactory");
+  const faroDutchAuctionFactory = await FaroDutchAuctionFactory.deploy();
+  await faroDutchAuctionFactory.deployed();
+  console.log(
+    "FaroDutchAuctionFactory deployed to:",
+    faroDutchAuctionFactory.address
   );
 }
 
@@ -28,5 +50,5 @@ main()
   })
   .catch((error) => {
     console.error(error);
-    throw(error);
+    throw error;
   });
