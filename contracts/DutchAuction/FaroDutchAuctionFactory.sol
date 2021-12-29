@@ -1,10 +1,10 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import { DutchAuction } from './DutchAuction.sol';
+import { FaroDutchAuction } from './FaroDutchAuction.sol';
 import {FaroOffering} from "../Funding/FaroOffering.sol";
 
-contract DutchAuctionFactory {
+contract FaroDutchAuctionFactory {
 
     // vaultToken -> auctionAddress
     address[] public auctions;
@@ -14,7 +14,7 @@ contract DutchAuctionFactory {
 
     function createAuction(address faroOfferingAddress, uint256[] memory _priceUpdateArray, uint256 _supply,
         address[] memory _eligibleBidders) public {
-        address newAuction = address(new DutchAuction(faroOfferingAddress, msg.sender,
+        address newAuction = address(new FaroDutchAuction(faroOfferingAddress, msg.sender,
             _priceUpdateArray, _supply, _eligibleBidders));
         auctions.push(address(newAuction));
         emit AuctionCreated(faroOfferingAddress, address(newAuction), msg.sender);

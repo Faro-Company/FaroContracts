@@ -2,9 +2,9 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
-import {EnglishAuction} from './EnglishAuction.sol';
+import {FaroEnglishAuction} from './FaroEnglishAuction.sol';
 
-contract EnglishAuctionFactory {
+contract FaroEnglishAuctionFactory {
 
     address[] public auctions;
     event AuctionCreated(address auctionContract, address owner);
@@ -12,7 +12,7 @@ contract EnglishAuctionFactory {
 
     function createAuction(uint256 _bidIncrement, uint256 _auctionPeriodInSeconds,
         address _token, uint256 _tokenId, uint256 _floorPrice) public {
-        EnglishAuction newAuction = new EnglishAuction(msg.sender, _bidIncrement,
+        FaroEnglishAuction newAuction = new FaroEnglishAuction(msg.sender, _bidIncrement,
             _auctionPeriodInSeconds, _token, _tokenId, _floorPrice);
         address auctionAddress = address(newAuction);
         IERC721(_token).transferFrom(msg.sender, auctionAddress, _tokenId);

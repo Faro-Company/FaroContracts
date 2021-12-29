@@ -1,3 +1,5 @@
+const { ethers } = require("hardhat");
+
 // scripts/deploy.js
 async function main() {
   // We get the contract to deploy
@@ -21,8 +23,10 @@ async function main() {
 }
 
 main()
-  .then(() => process.exit(0))
+  .then(() => {
+    return 0;
+  })
   .catch((error) => {
     console.error(error);
-    process.exit(1);
+    throw(error);
   });

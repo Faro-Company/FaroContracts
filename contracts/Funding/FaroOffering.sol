@@ -170,7 +170,7 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
         return fractional.balanceOf(_holder);
     }
 
-    function extendToDutchAuction(address auctionAddress, uint newSupply) public isOwner {
+    function extendToFaroDutchAuction(address auctionAddress, uint newSupply) public isOwner {
         require(offeringState == OfferingState.ended, "Offering is not ended");
         fractional.mint(newSupply, auctionAddress);
     }

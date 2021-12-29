@@ -28,7 +28,7 @@ const AUCTION_DEPLOYED_STATE = "0";
 const AUCTION_ENDED_STATE = "2";
 const AUCTION_CANCELLED_STATE = "3";
 
-describe("EnglishAuction", function () {
+describe("FaroEnglishAuction", function () {
   before(async function () {
     const accounts = await ethers.provider.listAccounts();
     this.owner = accounts[0];
@@ -62,12 +62,13 @@ describe("EnglishAuction", function () {
     await this.ktlNFT.deployed();
     const erc721ContractWithSigner = this.ktlNFT.connect(this.ownerSigner);
 
-    const EnglishAuctionFactory = await ethers.getContractFactory(
-      "EnglishAuctionFactory"
+    const FaroEnglishAuctionFactory = await ethers.getContractFactory(
+      "FaroEnglishAuctionFactory"
     );
-    this.englishAuctionFactory = await EnglishAuctionFactory.deploy();
-    await this.englishAuctionFactory.deployed();
-    const englishAuctionFactoryAddress = this.englishAuctionFactory.address;
+    this.faroEnglishAuctionFactory = await FaroEnglishAuctionFactory.deploy();
+    await this.faroEnglishAuctionFactory.deployed();
+    const faroEnglishAuctionFactoryAddress =
+      this.faroEnglishAuctionFactory.address;
 
     let wallet;
     let signer;
@@ -84,17 +85,17 @@ describe("EnglishAuction", function () {
       this.wallets.push(wallet);
       signer = this.ktlNFT.connect(wallet);
       const approveTx = await signer.approve(
-        englishAuctionFactoryAddress,
+        faroEnglishAuctionFactoryAddress,
         tokenId
       );
       await approveTx.wait();
-      signer = this.englishAuctionFactory.connect(wallet);
+      signer = this.faroEnglishAuctionFactory.connect(wallet);
       this.signers.push(signer);
       balance = await wallet.getBalance();
       this.initialBalances.push(balance);
     }
 
-    this.factoryWithNonOwner = this.englishAuctionFactory.connect(
+    this.factoryWithNonOwner = this.faroEnglishAuctionFactory.connect(
       this.distributor
     );
   });
@@ -141,9 +142,13 @@ describe("EnglishAuction", function () {
         (i + 1).toString()
       );
       auctionAddress = await participantSigner.getAuction(i);
-      const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-      const englishAuction = await EnglishAuction.attach(auctionAddress);
-      participantSigner = englishAuction.connect(this.wallets[0]);
+      const FaroEnglishAuction = await ethers.getContractFactory(
+        "FaroEnglishAuction"
+      );
+      const faroEnglishAuction = await FaroEnglishAuction.attach(
+        auctionAddress
+      );
+      participantSigner = faroEnglishAuction.connect(this.wallets[0]);
       expect((await participantSigner.getAuctionState()).toString()).to.equal(
         AUCTION_DEPLOYED_STATE
       );
@@ -153,9 +158,11 @@ describe("EnglishAuction", function () {
   it("Auction cannot be started by nonOwner", async function () {
     const participantSigner = this.signers[0];
     const lastAuction = await participantSigner.getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const auctionSigner = englishAuction.connect(this.wallets[0]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const auctionSigner = faroEnglishAuction.connect(this.wallets[0]);
     await expectRevert(
       auctionSigner.start(),
       "Only owner can perform this operation."
@@ -164,9 +171,11 @@ describe("EnglishAuction", function () {
 
   it("Cannot bid on non-started auction", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[0]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
     await expectRevert(
       participantSigner.bid({
         value: ethers.utils.parseEther(BID_PRICE_MORE_THAN_FLOOR),
@@ -176,13 +185,15 @@ describe("EnglishAuction", function () {
   });
 
   it("Auction can be started by owner", async function () {
-    let participantSigner, tx, auctionAddress, englishAuction;
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
+    let participantSigner, tx, auctionAddress, faroEnglishAuction;
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
     for (let i = 0; i < this.signers.length; i++) {
       participantSigner = this.signers[i];
       auctionAddress = await participantSigner.getAuction(i);
-      englishAuction = await EnglishAuction.attach(auctionAddress);
-      participantSigner = englishAuction.connect(this.wallets[i]);
+      faroEnglishAuction = await FaroEnglishAuction.attach(auctionAddress);
+      participantSigner = faroEnglishAuction.connect(this.wallets[i]);
       tx = await participantSigner.start();
       await tx.wait();
       expect((await participantSigner.getAuctionState()).toString()).to.equal(
@@ -193,9 +204,11 @@ describe("EnglishAuction", function () {
 
   it("Cannot make bid with less than floor price", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[0]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
     await expectRevert(
       participantSigner.bid({
         value: ethers.utils.parseEther(INSUFFICIENT_BID_PRICE),
@@ -206,9 +219,11 @@ describe("EnglishAuction", function () {
 
   it("Can make bid more than floor price", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[0]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
     const tx = await participantSigner.bid({
       value: ethers.utils.parseEther(BID_PRICE_MORE_THAN_FLOOR),
     });
@@ -220,9 +235,11 @@ describe("EnglishAuction", function () {
 
   it("Can make bid more than floor price to another auction", async function () {
     const firstAuction = await this.signers[0].getAuction(3);
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(firstAuction);
-    const participantSigner = englishAuction.connect(this.wallets[0]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(firstAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
     const tx = await participantSigner.bid({
       value: ethers.utils.parseEther(BID_PRICE_MORE_THAN_FLOOR),
     });
@@ -234,9 +251,11 @@ describe("EnglishAuction", function () {
 
   it("Non-owner cannot cancel auction ", async function () {
     const firstAuction = await this.signers[0].getAuction(3);
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(firstAuction);
-    const participantSigner = englishAuction.connect(this.wallets[0]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(firstAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
     await expectRevert(
       participantSigner.cancelAuction(),
       "Only owner can perform this operation."
@@ -245,9 +264,11 @@ describe("EnglishAuction", function () {
 
   it("Owner can cancel auction ", async function () {
     const firstAuction = await this.signers[0].getAuction(3);
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(firstAuction);
-    const participantSigner = englishAuction.connect(this.wallets[3]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(firstAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[3]);
     const tx = await participantSigner.cancelAuction();
     await tx.wait();
     expect((await participantSigner.getAuctionState()).toString()).to.equal(
@@ -257,9 +278,11 @@ describe("EnglishAuction", function () {
 
   it("Cannot bid on cancelled auction ", async function () {
     const firstAuction = await this.signers[0].getAuction(3);
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(firstAuction);
-    const participantSigner = englishAuction.connect(this.wallets[0]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(firstAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
     await expectRevert(
       participantSigner.bid({
         value: ethers.utils.parseEther(BID_PRICE_MORE_THAN_FLOOR),
@@ -270,9 +293,11 @@ describe("EnglishAuction", function () {
 
   it("Can withdraw funds back from cancelled auction", async function () {
     const lastAuction = await this.signers[0].getAuction(3);
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[0]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
     const participantAddress = this.wallets[0].address;
     const preWithdrawBid = await participantSigner.getBidForAnAddress(
       participantAddress
@@ -287,9 +312,11 @@ describe("EnglishAuction", function () {
 
   it("Non-owner Cannot withdraw NFT from cancelled auction", async function () {
     const lastAuction = await this.signers[0].getAuction(3);
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[0]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
     await expectRevert(
       participantSigner.withdrawNFT(),
       "Auction must be ended for this operation."
@@ -298,9 +325,11 @@ describe("EnglishAuction", function () {
 
   it("Owner can withdraw NFT from cancelled auction", async function () {
     const lastAuction = await this.signers[0].getAuction(3);
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[3]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[3]);
     const tx = await participantSigner.withdrawNFTWhenCancelled();
     await tx.wait();
     expect((await this.ktlNFT.ownerOf(3)).toString()).to.equal(
@@ -310,14 +339,16 @@ describe("EnglishAuction", function () {
 
   it("Cannot change highest bidder by offering a lower bid price", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[1]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[1]);
     const tx = await participantSigner.bid({
       value: ethers.utils.parseEther(BID_PRICE_LOWER_THAN_HIGH),
     });
     await tx.wait();
-    const secondParticipantSigner = englishAuction.connect(this.wallets[2]);
+    const secondParticipantSigner = faroEnglishAuction.connect(this.wallets[2]);
     expect(
       (
         await secondParticipantSigner.getBidForAnAddress(
@@ -332,14 +363,16 @@ describe("EnglishAuction", function () {
 
   it("Can change highest bid by putting more amount", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[1]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[1]);
     const tx = await participantSigner.bid({
       value: ethers.utils.parseEther(BID_PRICE_LOWER_THAN_HIGH),
     });
     await tx.wait();
-    const secondParticipantSigner = englishAuction.connect(this.wallets[2]);
+    const secondParticipantSigner = faroEnglishAuction.connect(this.wallets[2]);
     expect(
       (
         await secondParticipantSigner.getBidForAnAddress(
@@ -356,14 +389,16 @@ describe("EnglishAuction", function () {
 
   it("Can change bids by putting more amount to existing again", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[0]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
     const tx = await participantSigner.bid({
       value: ethers.utils.parseEther(BID_PRICE_MORE_THAN_FLOOR),
     });
     await tx.wait();
-    const secondParticipantSigner = englishAuction.connect(this.wallets[2]);
+    const secondParticipantSigner = faroEnglishAuction.connect(this.wallets[2]);
     expect(
       (
         await secondParticipantSigner.getBidForAnAddress(
@@ -380,9 +415,11 @@ describe("EnglishAuction", function () {
 
   it("Cannot withdraw before the auction ends", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[2]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[2]);
     await expectRevert(
       participantSigner.withdraw(),
       "Auction did not end or was cancelled."
@@ -391,9 +428,11 @@ describe("EnglishAuction", function () {
 
   it("Winner cannot withdraw the item before the auction ends", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[2]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[2]);
     await expectRevert(
       participantSigner.withdrawNFT(),
       "Auction must be ended for this operation."
@@ -402,9 +441,11 @@ describe("EnglishAuction", function () {
 
   it("Cannot trigger end before the end time", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[2]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[2]);
     const tx = await participantSigner.end();
     tx.wait();
     expect((await participantSigner.getAuctionState()).toString()).to.equal(
@@ -414,9 +455,11 @@ describe("EnglishAuction", function () {
 
   it("Cannot participate after the auction ends", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[2]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[2]);
     await timeMachine.advanceTimeAndBlock(ethers.provider, FAST_FORWARD_PERIOD);
     await expectRevert(
       participantSigner.bid({
@@ -431,7 +474,7 @@ describe("EnglishAuction", function () {
     for (let i = 0; i < this.signers.length; i++) {
       if (i === 3) continue;
       auction = await this.signers[0].getAuction(i);
-      EngAuction = await ethers.getContractFactory("EnglishAuction");
+      EngAuction = await ethers.getContractFactory("FaroEnglishAuction");
       engAuction = await EngAuction.attach(auction);
       participantSigner = engAuction.connect(this.wallets[2]);
       tx = await participantSigner.end();
@@ -444,17 +487,21 @@ describe("EnglishAuction", function () {
 
   it("Cannot start the already ended auction", async function () {
     const lastAuction = await this.signers[0].getAuction(2);
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[2]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[2]);
     await expectRevert(participantSigner.start(), "Auction's already started");
   });
 
   it("Non-bidder cannot withdraw auction item", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[4]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[4]);
     await expectRevert(
       participantSigner.withdrawNFT(),
       "Only the highest bidder can withdraw the auction item."
@@ -463,9 +510,11 @@ describe("EnglishAuction", function () {
 
   it("Non-bidder cannot withdrawal", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[4]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[4]);
     await expectRevert(
       participantSigner.withdraw(),
       "Sender has no bids to withdraw."
@@ -474,9 +523,11 @@ describe("EnglishAuction", function () {
 
   it("Not winner cannot withdraw auction item", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[1]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[1]);
     await expectRevert(
       participantSigner.withdrawNFT(),
       "Only the highest bidder can withdraw the auction item."
@@ -485,9 +536,11 @@ describe("EnglishAuction", function () {
 
   it("Not winner can withdraw its funds", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[1]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[1]);
     const tx = await participantSigner.withdraw();
     await tx.wait();
     expect(
@@ -499,9 +552,11 @@ describe("EnglishAuction", function () {
 
   it("Not winner cannot withdraw its funds again", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[1]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[1]);
     await expectRevert(
       participantSigner.withdraw(),
       "Sender has no bids to withdraw."
@@ -510,9 +565,11 @@ describe("EnglishAuction", function () {
 
   it("Winner can withdraw the NFT", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[0]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
     const tx = await participantSigner.withdrawNFT();
     await tx.wait();
     this.ktlNFT.connect(this.wallets[2]);
@@ -523,9 +580,11 @@ describe("EnglishAuction", function () {
 
   it("Winner cannot attempt to withdraw the NFT again", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[0]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
     await expectRevert(
       participantSigner.withdrawNFT(),
       "ERC721: transfer caller is not owner nor approved"
@@ -534,9 +593,11 @@ describe("EnglishAuction", function () {
 
   it("Winner can withdraw the funds if higher than highest binding bid ", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[0]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
     const bindingBid = await participantSigner.highestBindingBid();
     const highestBid = await participantSigner.getHighestBid();
     expect(highestBid - bindingBid).to.be.above(0);
@@ -549,9 +610,11 @@ describe("EnglishAuction", function () {
 
   it("Winner cannot withdraw again ", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
-    const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
-    const englishAuction = await EnglishAuction.attach(lastAuction);
-    const participantSigner = englishAuction.connect(this.wallets[0]);
+    const FaroEnglishAuction = await ethers.getContractFactory(
+      "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
+    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
     await expectRevert(
       participantSigner.withdraw(),
       "Withdrawal amount cannot be 0."

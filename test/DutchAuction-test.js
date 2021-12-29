@@ -34,7 +34,7 @@ function getPriceChangeArray(endPrice, timeTicks) {
   return priceChangeArray;
 }
 
-describe("DutchAuction", function () {
+describe("FaroDutchAuction", function () {
   before(async function () {
     await ethers.provider.send("hardhat_reset");
     const accounts = await ethers.provider.listAccounts();
@@ -131,17 +131,16 @@ describe("DutchAuction", function () {
     expect(
       (await this.ownerWithOffering.getOfferingState()).toString()
     ).to.equal("2");
-    const DutchAuctionFactory = await ethers.getContractFactory(
-      "DutchAuctionFactory"
+    const FaroDutchAuctionFactory = await ethers.getContractFactory(
+      "FaroDutchAuctionFactory"
     );
-    this.dutchAuctionFactory = await DutchAuctionFactory.deploy();
-    await this.dutchAuctionFactory.deployed();
-    this.dutchAuctionFactoryWithOwnerSigner = this.dutchAuctionFactory.connect(
-      this.projectFundRaisingSigner
-    );
+    this.faroDutchAuctionFactory = await FaroDutchAuctionFactory.deploy();
+    await this.faroDutchAuctionFactory.deployed();
+    this.faroDutchAuctionFactoryWithOwnerSigner =
+      this.faroDutchAuctionFactory.connect(this.projectFundRaisingSigner);
 
-    this.dutchAuctionFactoryWithNonOwnerSigner =
-      this.dutchAuctionFactory.connect(this.nonOwnerSigner);
+    this.faroDutchAuctionFactoryWithNonOwnerSigner =
+      this.faroDutchAuctionFactory.connect(this.nonOwnerSigner);
 
     this.listingPrice = ethers.utils.formatEther(
       await this.ownerWithOffering.getListingPrice()
@@ -161,7 +160,7 @@ describe("DutchAuction", function () {
 
   it("Auction cannot be created by non-owner", async function () {
     await expectRevert(
-      this.dutchAuctionFactoryWithNonOwnerSigner.createAuction(
+      this.faroDutchAuctionFactoryWithNonOwnerSigner.createAuction(
         this.offeringAddress,
         this.ethPriceChanges,
         SUPPLY,
@@ -174,11 +173,11 @@ describe("DutchAuction", function () {
   it("Auction can be created by owner of offering", async function () {
     expect(
       (
-        await this.dutchAuctionFactoryWithOwnerSigner.getAuctionCount()
+        await this.faroDutchAuctionFactoryWithOwnerSigner.getAuctionCount()
       ).toString()
     ).to.equal("0");
     const auctionCreationTx =
-      await this.dutchAuctionFactoryWithOwnerSigner.createAuction(
+      await this.faroDutchAuctionFactoryWithOwnerSigner.createAuction(
         this.offeringAddress,
         this.ethPriceChanges,
         SUPPLY,
@@ -187,75 +186,88 @@ describe("DutchAuction", function () {
     await auctionCreationTx.wait();
     expect(
       (
-        await this.dutchAuctionFactoryWithOwnerSigner.getAuctionCount()
+        await this.faroDutchAuctionFactoryWithOwnerSigner.getAuctionCount()
       ).toString()
     ).to.equal("1");
-    const dutchAuction =
-      await this.dutchAuctionFactoryWithOwnerSigner.getLastAuction();
-    const DutchAuction = await ethers.getContractFactory("DutchAuction");
-    const dutchAuctionObject = await DutchAuction.attach(dutchAuction);
-    const dutchAuctionOwnerSigner = dutchAuctionObject.connect(
+    const faroDutchAuction =
+      await this.faroDutchAuctionFactoryWithOwnerSigner.getLastAuction();
+    const FaroDutchAuction = await ethers.getContractFactory(
+      "FaroDutchAuction"
+    );
+    const faroDutchAuctionObject = await FaroDutchAuction.attach(
+      faroDutchAuction
+    );
+    const faroDutchAuctionOwnerSigner = faroDutchAuctionObject.connect(
       this.ownerSigner
     );
-    expect(await dutchAuctionOwnerSigner.owner()).to.equal(
+    expect(await faroDutchAuctionOwnerSigner.owner()).to.equal(
       this.projectFundRaisingSigner.address
     );
     expect(
-      (await dutchAuctionOwnerSigner.getAuctionState()).toString()
+      (await faroDutchAuctionOwnerSigner.getAuctionState()).toString()
     ).to.equal(AUCTION_DEPLOYED_STATE);
     const mintFractionalTransaction =
-      await this.ownerWithOffering.extendToDutchAuction(dutchAuction, SUPPLY);
+      await this.ownerWithOffering.extendToFaroDutchAuction(
+        faroDutchAuction,
+        SUPPLY
+      );
     await mintFractionalTransaction.wait();
     expect(
       (
-        await this.ownerWithOffering.getFractionalBalance(dutchAuction)
+        await this.ownerWithOffering.getFractionalBalance(faroDutchAuction)
       ).toString()
     ).to.equal(SUPPLY.toString());
   });
 
   it("Auction cannot be started by non-owner", async function () {
     const auction =
-      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
-    const DutchAuction = await ethers.getContractFactory("DutchAuction");
-    const dutchAuctionObject = await DutchAuction.attach(auction);
-    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const FaroDutchAuction = await ethers.getContractFactory(
+      "FaroDutchAuction"
+    );
+    const faroDutchAuctionObject = await FaroDutchAuction.attach(auction);
+    const faroDutchAuctionNonOwnerSigner = faroDutchAuctionObject.connect(
       this.nonOwnerSigner
     );
     await expectRevert(
-      dutchAuctionNonOwnerSigner.start(),
+      faroDutchAuctionNonOwnerSigner.start(),
       "This method can only be called by owner"
     );
   });
 
   it("Auction can be started by owner", async function () {
     const auction =
-      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
-    const DutchAuction = await ethers.getContractFactory("DutchAuction");
-    const dutchAuctionObject = await DutchAuction.attach(auction);
-    const dutchAuctionOwnerSigner = dutchAuctionObject.connect(
+      await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const FaroDutchAuction = await ethers.getContractFactory(
+      "FaroDutchAuction"
+    );
+    const faroDutchAuctionObject = await FaroDutchAuction.attach(auction);
+    const faroDutchAuctionOwnerSigner = faroDutchAuctionObject.connect(
       this.projectFundRaisingSigner
     );
-    const startTx = await dutchAuctionOwnerSigner.start();
+    const startTx = await faroDutchAuctionOwnerSigner.start();
     await startTx.wait();
     expect(
-      (await dutchAuctionOwnerSigner.getAuctionState()).toString()
+      (await faroDutchAuctionOwnerSigner.getAuctionState()).toString()
     ).to.equal(AUCTION_STARTED_STATE);
     expect(
-      (await dutchAuctionOwnerSigner.getCurrentPrice()).toString()
+      (await faroDutchAuctionOwnerSigner.getCurrentPrice()).toString()
     ).to.equal(this.startPrice.toString());
   });
 
   it("Owner cannot bid", async function () {
     const auction =
-      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
-    const DutchAuction = await ethers.getContractFactory("DutchAuction");
-    const dutchAuctionObject = await DutchAuction.attach(auction);
-    const dutchAuctionOwnerSigner = dutchAuctionObject.connect(
+      await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const FaroDutchAuction = await ethers.getContractFactory(
+      "FaroDutchAuction"
+    );
+    const faroDutchAuctionObject = await FaroDutchAuction.attach(auction);
+    const faroDutchAuctionOwnerSigner = faroDutchAuctionObject.connect(
       this.projectFundRaisingSigner
     );
-    const currentPrice = await dutchAuctionOwnerSigner.getCurrentPrice();
+    const currentPrice = await faroDutchAuctionOwnerSigner.getCurrentPrice();
     await expectRevert(
-      dutchAuctionOwnerSigner.bid(BUY_AMOUNT, {
+      faroDutchAuctionOwnerSigner.bid(BUY_AMOUNT, {
         value: currentPrice,
       }),
       "Owner is not allowed to bid"
@@ -264,17 +276,19 @@ describe("DutchAuction", function () {
 
   it("Non-eligible cannot bid ", async function () {
     const auction =
-      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
-    const DutchAuction = await ethers.getContractFactory("DutchAuction");
-    const dutchAuctionObject = await DutchAuction.attach(auction);
-    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const FaroDutchAuction = await ethers.getContractFactory(
+      "FaroDutchAuction"
+    );
+    const faroDutchAuctionObject = await FaroDutchAuction.attach(auction);
+    const faroDutchAuctionNonOwnerSigner = faroDutchAuctionObject.connect(
       this.nonOwnerSigner
     );
     const currentPriceInWei =
-      await dutchAuctionNonOwnerSigner.getCurrentPrice();
+      await faroDutchAuctionNonOwnerSigner.getCurrentPrice();
     const currentPriceInEth = ethers.utils.formatEther(currentPriceInWei);
     await expectRevert(
-      dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+      faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
         value: ethers.utils.parseEther(currentPriceInEth.toString()),
       }),
       "Bidder is not eligible."
@@ -283,17 +297,19 @@ describe("DutchAuction", function () {
 
   it("Non-eligible cannot bid under current price", async function () {
     const auction =
-      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
-    const DutchAuction = await ethers.getContractFactory("DutchAuction");
-    const dutchAuctionObject = await DutchAuction.attach(auction);
-    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const FaroDutchAuction = await ethers.getContractFactory(
+      "FaroDutchAuction"
+    );
+    const faroDutchAuctionObject = await FaroDutchAuction.attach(auction);
+    const faroDutchAuctionNonOwnerSigner = faroDutchAuctionObject.connect(
       this.offeringParticipants[1]
     );
     const currentPriceInWei =
-      await dutchAuctionNonOwnerSigner.getCurrentPrice();
+      await faroDutchAuctionNonOwnerSigner.getCurrentPrice();
     const currentPriceInEth = ethers.utils.formatEther(currentPriceInWei);
     await expectRevert(
-      dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+      faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
         value: ethers.utils.parseEther(
           (currentPriceInEth - PRICE_DECREMENT).toString()
         ),
@@ -304,24 +320,26 @@ describe("DutchAuction", function () {
 
   it("Non-owner can bid", async function () {
     const auction =
-      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
-    const DutchAuction = await ethers.getContractFactory("DutchAuction");
-    const dutchAuctionObject = await DutchAuction.attach(auction);
-    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const FaroDutchAuction = await ethers.getContractFactory(
+      "FaroDutchAuction"
+    );
+    const faroDutchAuctionObject = await FaroDutchAuction.attach(auction);
+    const faroDutchAuctionNonOwnerSigner = faroDutchAuctionObject.connect(
       this.offeringParticipants[1]
     );
 
     const projectFundingAddress =
-      await dutchAuctionNonOwnerSigner.projectFundingAddress();
+      await faroDutchAuctionNonOwnerSigner.projectFundingAddress();
     const previousBalanceInWei = await ethers.provider.getBalance(
       projectFundingAddress
     );
     const previousBalance = ethers.utils.formatEther(previousBalanceInWei);
     const currentPriceInWei =
-      await dutchAuctionNonOwnerSigner.getCurrentPrice();
+      await faroDutchAuctionNonOwnerSigner.getCurrentPrice();
     const currentPriceInEthers = ethers.utils.formatEther(currentPriceInWei);
     const paidMoney = currentPriceInEthers * BUY_AMOUNT;
-    const bidTx = await dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+    const bidTx = await faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
       value: ethers.utils.parseEther(paidMoney.toString()),
     });
     await bidTx.wait();
@@ -332,35 +350,37 @@ describe("DutchAuction", function () {
     expect(afterTxBalanceInEth - previousBalance).to.equal(paidMoney);
     expect(
       (
-        await dutchAuctionNonOwnerSigner.getFractionalBalance(
+        await faroDutchAuctionNonOwnerSigner.getFractionalBalance(
           this.funderAddresses[1]
         )
       ).toString()
     ).to.equal(BUY_AMOUNT.toString());
     expect(
-      (await dutchAuctionNonOwnerSigner.getRemaining()).toString()
+      (await faroDutchAuctionNonOwnerSigner.getRemaining()).toString()
     ).to.equal((SUPPLY - BUY_AMOUNT).toString());
   });
 
   it("Can buy again", async function () {
     const auction =
-      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
-    const DutchAuction = await ethers.getContractFactory("DutchAuction");
-    const dutchAuctionObject = await DutchAuction.attach(auction);
-    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const FaroDutchAuction = await ethers.getContractFactory(
+      "FaroDutchAuction"
+    );
+    const faroDutchAuctionObject = await FaroDutchAuction.attach(auction);
+    const faroDutchAuctionNonOwnerSigner = faroDutchAuctionObject.connect(
       this.offeringParticipants[1]
     );
     const projectFundingAddress =
-      await dutchAuctionNonOwnerSigner.projectFundingAddress();
+      await faroDutchAuctionNonOwnerSigner.projectFundingAddress();
     const previousBalanceInWei = await ethers.provider.getBalance(
       projectFundingAddress
     );
     const previousBalance = ethers.utils.formatEther(previousBalanceInWei);
     const currentPriceInWei =
-      await dutchAuctionNonOwnerSigner.getCurrentPrice();
+      await faroDutchAuctionNonOwnerSigner.getCurrentPrice();
     const currentPriceInEth = ethers.utils.formatEther(currentPriceInWei);
     const paidMoney = currentPriceInEth * BUY_AMOUNT;
-    const bidTx = await dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+    const bidTx = await faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
       value: ethers.utils.parseEther(paidMoney.toString()),
     });
     await bidTx.wait();
@@ -373,34 +393,36 @@ describe("DutchAuction", function () {
     const twiceBuyAmount = 2 * BUY_AMOUNT;
     expect(
       (
-        await dutchAuctionNonOwnerSigner.getFractionalBalance(
+        await faroDutchAuctionNonOwnerSigner.getFractionalBalance(
           this.funderAddresses[1]
         )
       ).toString()
     ).to.equal(twiceBuyAmount.toString());
     expect(
-      (await dutchAuctionNonOwnerSigner.getRemaining()).toString()
+      (await faroDutchAuctionNonOwnerSigner.getRemaining()).toString()
     ).to.equal((SUPPLY - twiceBuyAmount).toString());
   });
 
   it("Another user can buy ", async function () {
     const auction =
-      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
-    const DutchAuction = await ethers.getContractFactory("DutchAuction");
-    const dutchAuctionObject = await DutchAuction.attach(auction);
-    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const FaroDutchAuction = await ethers.getContractFactory(
+      "FaroDutchAuction"
+    );
+    const faroDutchAuctionObject = await FaroDutchAuction.attach(auction);
+    const faroDutchAuctionNonOwnerSigner = faroDutchAuctionObject.connect(
       this.offeringParticipants[2]
     );
     const projectFundingAddress =
-      await dutchAuctionNonOwnerSigner.projectFundingAddress();
+      await faroDutchAuctionNonOwnerSigner.projectFundingAddress();
     const previousBalance = ethers.utils.formatEther(
       await ethers.provider.getBalance(projectFundingAddress)
     );
     const currentPriceInEth = ethers.utils.formatEther(
-      await dutchAuctionNonOwnerSigner.getCurrentPrice()
+      await faroDutchAuctionNonOwnerSigner.getCurrentPrice()
     );
     const paidMoney = currentPriceInEth * BUY_AMOUNT;
-    const bidTx = await dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+    const bidTx = await faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
       value: ethers.utils.parseEther(paidMoney.toString()),
     });
     await bidTx.wait();
@@ -412,13 +434,13 @@ describe("DutchAuction", function () {
     const tripleBuyAmount = 3 * BUY_AMOUNT;
     expect(
       (
-        await dutchAuctionNonOwnerSigner.getFractionalBalance(
+        await faroDutchAuctionNonOwnerSigner.getFractionalBalance(
           this.funderAddresses[2]
         )
       ).toString()
     ).to.equal(BUY_AMOUNT.toString());
     expect(
-      (await dutchAuctionNonOwnerSigner.getRemaining()).toString()
+      (await faroDutchAuctionNonOwnerSigner.getRemaining()).toString()
     ).to.equal((SUPPLY - tripleBuyAmount).toString());
   });
 
@@ -428,37 +450,41 @@ describe("DutchAuction", function () {
       FAST_FORWARD_PERIOD1 * SECS_IN_HOUR
     );
     const auction =
-      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
-    const DutchAuction = await ethers.getContractFactory("DutchAuction");
-    const dutchAuctionObject = await DutchAuction.attach(auction);
-    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const FaroDutchAuction = await ethers.getContractFactory(
+      "FaroDutchAuction"
+    );
+    const faroDutchAuctionObject = await FaroDutchAuction.attach(auction);
+    const faroDutchAuctionNonOwnerSigner = faroDutchAuctionObject.connect(
       this.nonOwnerSigner2
     );
-    const priceTx = await dutchAuctionNonOwnerSigner.setCurrentPrice();
+    const priceTx = await faroDutchAuctionNonOwnerSigner.setCurrentPrice();
     await priceTx.wait();
     expect(
-      (await dutchAuctionNonOwnerSigner.getCurrentPrice()).toString()
+      (await faroDutchAuctionNonOwnerSigner.getCurrentPrice()).toString()
     ).to.equal(this.ethPriceChanges[FAST_FORWARD_PERIOD1].toString());
   });
 
   it("Can bid with new price", async function () {
     const auction =
-      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
-    const DutchAuction = await ethers.getContractFactory("DutchAuction");
-    const dutchAuctionObject = await DutchAuction.attach(auction);
-    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const FaroDutchAuction = await ethers.getContractFactory(
+      "FaroDutchAuction"
+    );
+    const faroDutchAuctionObject = await FaroDutchAuction.attach(auction);
+    const faroDutchAuctionNonOwnerSigner = faroDutchAuctionObject.connect(
       this.offeringParticipants[2]
     );
     const projectFundingAddress =
-      await dutchAuctionNonOwnerSigner.projectFundingAddress();
+      await faroDutchAuctionNonOwnerSigner.projectFundingAddress();
     const previousBalance = ethers.utils.formatEther(
       await ethers.provider.getBalance(projectFundingAddress)
     );
     const currentPriceInEth = ethers.utils.formatEther(
-      await dutchAuctionNonOwnerSigner.getCurrentPrice()
+      await faroDutchAuctionNonOwnerSigner.getCurrentPrice()
     );
     const paidMoney = currentPriceInEth * BUY_AMOUNT;
-    const bidTx = await dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+    const bidTx = await faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
       value: ethers.utils.parseEther(paidMoney.toString()),
     });
     await bidTx.wait();
@@ -473,34 +499,36 @@ describe("DutchAuction", function () {
 
     expect(
       (
-        await dutchAuctionNonOwnerSigner.getFractionalBalance(
+        await faroDutchAuctionNonOwnerSigner.getFractionalBalance(
           this.funderAddresses[2]
         )
       ).toString()
     ).to.equal(twiceBuyAmount.toString());
     expect(
-      (await dutchAuctionNonOwnerSigner.getRemaining()).toString()
+      (await faroDutchAuctionNonOwnerSigner.getRemaining()).toString()
     ).to.equal((SUPPLY - 2 * twiceBuyAmount).toString());
   });
 
   it("Cannot buy with less than that but can with higher", async function () {
     const auction =
-      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
-    const DutchAuction = await ethers.getContractFactory("DutchAuction");
-    const dutchAuctionObject = await DutchAuction.attach(auction);
-    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const FaroDutchAuction = await ethers.getContractFactory(
+      "FaroDutchAuction"
+    );
+    const faroDutchAuctionObject = await FaroDutchAuction.attach(auction);
+    const faroDutchAuctionNonOwnerSigner = faroDutchAuctionObject.connect(
       this.offeringParticipants[2]
     );
     const projectFundingAddress =
-      await dutchAuctionNonOwnerSigner.projectFundingAddress();
+      await faroDutchAuctionNonOwnerSigner.projectFundingAddress();
     const previousBalance = ethers.utils.formatEther(
       await ethers.provider.getBalance(projectFundingAddress)
     );
     const currentPrice = ethers.utils.formatEther(
-      await dutchAuctionNonOwnerSigner.getCurrentPrice()
+      await faroDutchAuctionNonOwnerSigner.getCurrentPrice()
     );
     await expectRevert(
-      dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+      faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
         value: ethers.utils.parseEther(
           (currentPrice - PRICE_DECREMENT).toString()
         ),
@@ -509,7 +537,7 @@ describe("DutchAuction", function () {
     );
     const paidMoney = currentPrice * 3 * BUY_AMOUNT;
 
-    const bidTx = await dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+    const bidTx = await faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
       value: ethers.utils.parseEther(paidMoney.toString()),
     });
     await bidTx.wait();
@@ -523,13 +551,13 @@ describe("DutchAuction", function () {
     const tripleBuyAmount = 3 * BUY_AMOUNT;
     expect(
       (
-        await dutchAuctionNonOwnerSigner.getFractionalBalance(
+        await faroDutchAuctionNonOwnerSigner.getFractionalBalance(
           this.funderAddresses[2]
         )
       ).toString()
     ).to.equal(tripleBuyAmount.toString());
     expect(
-      (await dutchAuctionNonOwnerSigner.getRemaining()).toString()
+      (await faroDutchAuctionNonOwnerSigner.getRemaining()).toString()
     ).to.equal((SUPPLY - 5 * BUY_AMOUNT).toString());
   });
 
@@ -539,16 +567,18 @@ describe("DutchAuction", function () {
       FAST_FORWARD_PERIOD2 * SECS_IN_HOUR
     );
     const auction =
-      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
-    const DutchAuction = await ethers.getContractFactory("DutchAuction");
-    const dutchAuctionObject = await DutchAuction.attach(auction);
-    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const FaroDutchAuction = await ethers.getContractFactory(
+      "FaroDutchAuction"
+    );
+    const faroDutchAuctionObject = await FaroDutchAuction.attach(auction);
+    const faroDutchAuctionNonOwnerSigner = faroDutchAuctionObject.connect(
       this.nonOwnerSigner2
     );
-    const setPriceTx = await dutchAuctionNonOwnerSigner.setCurrentPrice();
+    const setPriceTx = await faroDutchAuctionNonOwnerSigner.setCurrentPrice();
     await setPriceTx.wait();
     expect(
-      (await dutchAuctionNonOwnerSigner.getCurrentPrice()).toString()
+      (await faroDutchAuctionNonOwnerSigner.getCurrentPrice()).toString()
     ).to.equal(
       this.ethPriceChanges[
         FAST_FORWARD_PERIOD1 + FAST_FORWARD_PERIOD2
@@ -558,22 +588,24 @@ describe("DutchAuction", function () {
 
   it("Cannot buy with less than that but can with higher again", async function () {
     const auction =
-      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
-    const DutchAuction = await ethers.getContractFactory("DutchAuction");
-    const dutchAuctionObject = await DutchAuction.attach(auction);
-    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const FaroDutchAuction = await ethers.getContractFactory(
+      "FaroDutchAuction"
+    );
+    const faroDutchAuctionObject = await FaroDutchAuction.attach(auction);
+    const faroDutchAuctionNonOwnerSigner = faroDutchAuctionObject.connect(
       this.offeringParticipants[2]
     );
     const projectFundingAddress =
-      await dutchAuctionNonOwnerSigner.projectFundingAddress();
+      await faroDutchAuctionNonOwnerSigner.projectFundingAddress();
     const previousBalance = ethers.utils.formatEther(
       await ethers.provider.getBalance(projectFundingAddress)
     );
     const currentPrice = ethers.utils.formatEther(
-      await dutchAuctionNonOwnerSigner.getCurrentPrice()
+      await faroDutchAuctionNonOwnerSigner.getCurrentPrice()
     );
     await expectRevert(
-      dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+      faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
         value: ethers.utils.parseEther(
           (currentPrice - PRICE_DECREMENT).toString()
         ),
@@ -581,7 +613,7 @@ describe("DutchAuction", function () {
       "Bid value is less than current price."
     );
     const paidMoney = currentPrice * 4 * BUY_AMOUNT;
-    const bidTx = await dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+    const bidTx = await faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
       value: ethers.utils.parseEther(paidMoney.toString()),
     });
     await bidTx.wait();
@@ -595,13 +627,13 @@ describe("DutchAuction", function () {
     const quadrupleBuyAmount = 4 * BUY_AMOUNT;
     expect(
       (
-        await dutchAuctionNonOwnerSigner.getFractionalBalance(
+        await faroDutchAuctionNonOwnerSigner.getFractionalBalance(
           this.funderAddresses[2]
         )
       ).toString()
     ).to.equal(quadrupleBuyAmount.toString());
     expect(
-      (await dutchAuctionNonOwnerSigner.getRemaining()).toString()
+      (await faroDutchAuctionNonOwnerSigner.getRemaining()).toString()
     ).to.equal((SUPPLY - 6 * BUY_AMOUNT).toString());
   });
 
@@ -611,43 +643,47 @@ describe("DutchAuction", function () {
       FAST_FORWARD_PERIOD3 * SECS_IN_HOUR
     );
     const auction =
-      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
-    const DutchAuction = await ethers.getContractFactory("DutchAuction");
-    const dutchAuctionObject = await DutchAuction.attach(auction);
-    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const FaroDutchAuction = await ethers.getContractFactory(
+      "FaroDutchAuction"
+    );
+    const faroDutchAuctionObject = await FaroDutchAuction.attach(auction);
+    const faroDutchAuctionNonOwnerSigner = faroDutchAuctionObject.connect(
       this.nonOwnerSigner2
     );
-    const setPriceTx = await dutchAuctionNonOwnerSigner.setCurrentPrice();
+    const setPriceTx = await faroDutchAuctionNonOwnerSigner.setCurrentPrice();
     await setPriceTx.wait();
     expect(
-      (await dutchAuctionNonOwnerSigner.getCurrentPrice()).toString()
+      (await faroDutchAuctionNonOwnerSigner.getCurrentPrice()).toString()
     ).to.equal(
       this.ethPriceChanges[
         FAST_FORWARD_PERIOD1 + FAST_FORWARD_PERIOD2 + FAST_FORWARD_PERIOD3
       ].toString()
     );
-    expect(await dutchAuctionNonOwnerSigner.timeTick()).to.equal(
+    expect(await faroDutchAuctionNonOwnerSigner.timeTick()).to.equal(
       this.ethPriceChanges.length - 1
     );
     expect(
-      (await dutchAuctionNonOwnerSigner.getAuctionState()).toString()
+      (await faroDutchAuctionNonOwnerSigner.getAuctionState()).toString()
     ).to.equal(AUCTION_ENDED_STATE);
   });
 
   it("Cannot bid on ended auction ", async function () {
     const auction =
-      await this.dutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
-    const DutchAuction = await ethers.getContractFactory("DutchAuction");
-    const dutchAuctionObject = await DutchAuction.attach(auction);
-    const dutchAuctionNonOwnerSigner = dutchAuctionObject.connect(
+      await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLastAuction();
+    const FaroDutchAuction = await ethers.getContractFactory(
+      "FaroDutchAuction"
+    );
+    const faroDutchAuctionObject = await FaroDutchAuction.attach(auction);
+    const faroDutchAuctionNonOwnerSigner = faroDutchAuctionObject.connect(
       this.offeringParticipants[2]
     );
     const currentPriceInEth = ethers.utils.formatEther(
-      await dutchAuctionNonOwnerSigner.getCurrentPrice()
+      await faroDutchAuctionNonOwnerSigner.getCurrentPrice()
     );
     const paidMoney = currentPriceInEth * BUY_AMOUNT;
     await expectRevert(
-      dutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
+      faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
         value: ethers.utils.parseEther(paidMoney.toString()),
       }),
       "Auction is not live."

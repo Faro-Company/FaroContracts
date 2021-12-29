@@ -6,7 +6,7 @@ import "../Funding/FaroOffering.sol";
 import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 
-contract DutchAuction {
+contract FaroDutchAuction {
 
     uint constant HOURS_IN_SECS = 3600;
     uint constant MAX_TIME_TICKS_ALLOWED = 1440;
