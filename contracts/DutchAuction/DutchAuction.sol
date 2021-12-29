@@ -11,7 +11,7 @@ contract DutchAuction {
     uint constant HOURS_IN_SECS = 3600;
     uint constant MAX_TIME_TICKS_ALLOWED = 1440;
 
-    FaroOffering public immutable offerableOwnership;
+    FaroOffering public offerableOwnership;
     FaroFractional public immutable fractional;
     mapping (address => uint) public eligibleBidders;
 
@@ -23,6 +23,7 @@ contract DutchAuction {
     uint256 auctionCurrentPrice;
     uint256[] priceUpdateArray;
     uint256 tickSize;
+    uint256 public timeTick;
 
     address payable public projectFundingAddress;
 
@@ -31,16 +32,16 @@ contract DutchAuction {
 
     mapping (address => uint) private bids;
 
-    AuctionState public auctionState;
-
-    /// @notice An event emitted when bid happens
-    event Bid(address indexed bidder, uint amount);
-
     enum AuctionState {
         AuctionDeployed,
         AuctionStarted,
         AuctionEnded
     }
+
+    AuctionState public auctionState;
+
+    /// @notice An event emitted when bid happens
+    event Bid(address indexed bidder, uint amount);
 
     modifier isOwner() {
         require(msg.sender == owner, "This method can only be called by owner");
@@ -48,7 +49,7 @@ contract DutchAuction {
     }
 
     modifier isNotOwner() {
-        require(msg.sender == wallet, "Owner is not allowed to bid");
+        require(msg.sender != owner, "Owner is not allowed to bid");
         _;
     }
 
@@ -59,14 +60,14 @@ contract DutchAuction {
 
 
     modifier updateAuctionState() {
-        if (block.timestamp > endTime) {
+        if (block.timestamp > endTime || timeTick == tickSize) {
             _end();
         }
         _;
     }
 
     modifier updatePrice() {
-        uint256 timeTick = (block.timestamp - startTime) / HOURS_IN_SECS;
+        timeTick = (block.timestamp - startTime) / HOURS_IN_SECS;
         if (timeTick > tickSize) {
             timeTick = tickSize;
         }
@@ -74,11 +75,15 @@ contract DutchAuction {
         _;
     }
 
-    function getAuctionState() public returns(AuctionState) {
+    function getAuctionState() public view returns(AuctionState) {
         return auctionState;
     }
 
-    function getCurrentPrice() public updatePrice {
+    function getCurrentPrice() public view returns(uint256) {
+        return auctionCurrentPrice;
+    }
+
+    function setCurrentPrice() public updatePrice updateAuctionState returns(uint256) {
         return auctionCurrentPrice;
     }
 
@@ -86,42 +91,46 @@ contract DutchAuction {
         return remaining;
     }
 
-    constructor(address _vaultToken, uint[] memory _priceUpdateArray, uint _supply,
+    constructor(address _offeringAddress, address _owner, uint[] memory _priceUpdateArray, uint _supply,
         address[] memory _eligibleBidders) {
         require(_priceUpdateArray.length <= MAX_TIME_TICKS_ALLOWED, "Too large price update array");
+        offerableOwnership = FaroOffering(_offeringAddress);
+        require(_owner == offerableOwnership.owner(), "Auction can only be created by offering owner");
         priceUpdateArray = _priceUpdateArray;
-        offerableOwnership = FaroOffering(_vaultToken);
-        require(msg.sender == offerableOwnership.owner, "Auction can only be created by offering owner");
-        owner = msg.sender;
-        fractional = offerableOwnership.getFractionalAddress();
+        tickSize = priceUpdateArray.length - 1;
+        owner = _owner;
+        fractional = FaroFractional(offerableOwnership.getFractionalAddress());
+        auctionStopPrice = offerableOwnership.getListingPrice();
+        projectFundingAddress = offerableOwnership.getProjectFundingAddress();
         auctionCurrentPrice = priceUpdateArray[0];
         auctionState = AuctionState.AuctionDeployed;
         supply = _supply;
+        remaining = supply;
         createEligibleBiddersTable(_eligibleBidders);
     }
 
-    function createEligibleBiddersTable(address[] memory _eligibleBidders) {
+    function createEligibleBiddersTable(address[] memory _eligibleBidders) internal {
         for (uint i = 0; i < _eligibleBidders.length; i++) {
             eligibleBidders[_eligibleBidders[i]] = 1;
         }
     }
 
-    function startAuction() public isOwner {
+    function start() public isOwner {
         require(auctionState == AuctionState.AuctionDeployed, "Auction is already started.");
-        auctionStopPrice = offerableOwnership.getListingPrice();
-        offerableOwnership.extendToDutchAuction(address(this), supply);
-        projectFundingAddress = offerableOwnership.getProjectFundingAddress();
+        require(offerableOwnership.getFractionalBalance(address(this)) == supply,
+            "Fractional tokens are not minted to Dutch auction account.");
         startTime = block.timestamp;
         endTime = startTime + priceUpdateArray.length * 1 hours;
         auctionState = AuctionState.AuctionStarted;
     }
 
-    function bid(uint256 _amount) public payable isNotOwner onlyStarted updateAuctionState updatePrice {
-        require(eligibleBidders[msg.sender] == 1, "Bidder is not eligible");
-        require(msg.value >= auctionCurrentPrice, "Bid value is less than current price.");
+    function bid(uint256 _amount) public payable isNotOwner onlyStarted updatePrice updateAuctionState {
+        uint totalToPay = _amount * auctionCurrentPrice;
+        require(eligibleBidders[msg.sender] == 1, "Bidder is not eligible.");
+        require(msg.value >= totalToPay, "Bid value is less than current price.");
         require(_amount <= remaining, "Bid amount is higher than remaining amount.");
         remaining -= _amount;
-        require(payable(projectFundingAddress).send(msg.value),
+        require(payable(projectFundingAddress).send(totalToPay),
             "Could not send the funds to the project offerings address.");
         fractional.transfer(msg.sender, _amount);
         emit Bid(msg.sender, _amount);

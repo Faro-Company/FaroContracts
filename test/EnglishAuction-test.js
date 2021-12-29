@@ -405,7 +405,7 @@ describe("EnglishAuction", function () {
     const EnglishAuction = await ethers.getContractFactory("EnglishAuction");
     const englishAuction = await EnglishAuction.attach(lastAuction);
     const participantSigner = englishAuction.connect(this.wallets[2]);
-    const tx = await participantSigner.triggerEnd();
+    const tx = await participantSigner.end();
     tx.wait();
     expect((await participantSigner.getAuctionState()).toString()).to.equal(
       AUCTION_STARTED_STATE

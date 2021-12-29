@@ -31,7 +31,7 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
 
     enum OfferingState { inactive, live, ended}
 
-    OfferingState private listingState;
+    OfferingState private offeringState;
 
     /// @notice a mapping of users to their funding amounts
     mapping(address => uint256) private funders;
@@ -50,10 +50,11 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
 
     modifier isOwner() {
         require(msg.sender == owner, "Sender is not the project owner.");
+        _;
     }
 
     modifier timeTransition() {
-        require(listingState == OfferingState.live, "Offering is not live.");
+        require(offeringState == OfferingState.live, "Offering is not live.");
         if (block.timestamp > listingEnd || remaining == 0) {
             _end();
         }
@@ -65,7 +66,7 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
     }
 
     function getOfferingState() public view returns (OfferingState) {
-        return listingState;
+        return offeringState;
     }
 
     function getRemainingAllocation(address funder) public view returns(uint256) {
@@ -95,7 +96,7 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
         projectFundingAddress = _projectFundingAddress;
         owner = _owner;
         listingPeriod = _listingPeriod * 1 days;
-        listingState = OfferingState.inactive;
+        offeringState = OfferingState.inactive;
         listingPrice = _listingPrice;
         require(_createFundersMapping(_funderAddresses, allocations) == _supply,
             "Given supply is not equal to the sum of allocations");
@@ -116,15 +117,15 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
 
     /// @notice Start the offering
     function start() external isOwner {
-        require(listingState == OfferingState.inactive, "Offering is already started");
+        require(offeringState == OfferingState.inactive, "Offering is already started");
         listingEnd = block.timestamp + listingPeriod;
-        listingState = OfferingState.live;
+        offeringState = OfferingState.live;
         emit Start(msg.sender);
     }
 
     /// @notice an external function to bid on purchasing the vaults NFT.
     function bid(uint _amount) external payable timeTransition {
-        uint256 totalToPxgsdfghghfghay = _amount * listingPrice;
+        uint256 totalToPay = _amount * listingPrice;
         require(!paused(), "The bid is paused.");
         require(funders[msg.sender] > 0, "Address is not allowed to participate in the offering.");
         require(msg.value > 0, "Funds sent cannot be zero.");
@@ -143,8 +144,8 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
     }
 
     function _end() internal {
-        require(listingState == OfferingState.live, "Offering is already closed.");
-        listingState = OfferingState.ended;
+        require(offeringState == OfferingState.live, "Offering is already closed.");
+        offeringState = OfferingState.ended;
         emit End();
     }
 
@@ -169,7 +170,8 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
         return fractional.balanceOf(_holder);
     }
 
-    function extendToDutchAuction(address auctionAddress, uint newSupply) public isOwner onlyEnded {
+    function extendToDutchAuction(address auctionAddress, uint newSupply) public isOwner {
+        require(offeringState == OfferingState.ended, "Offering is not ended");
         fractional.mint(newSupply, auctionAddress);
     }
 
