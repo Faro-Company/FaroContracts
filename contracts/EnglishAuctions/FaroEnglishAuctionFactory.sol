@@ -25,13 +25,38 @@ contract FaroEnglishAuctionFactory {
         return auctions[auctionCount - 1];
     }
 
-
-
     function getAuctionCount() public view returns(uint256) {
         return auctionCount;
     }
 
     function getAuction(uint256 auctionIndex) public view returns(address) {
         return auctions[auctionIndex];
+    }
+
+    function getLiveAuctions(uint32 liveAuctionStartIndex,
+        uint32 liveAuctionEndIndex) public view returns (address[] memory) {
+        uint32 maxCount = liveAuctionEndIndex - liveAuctionStartIndex;
+        require(auctionCount >= maxCount);
+        bytes memory payload = abi.encodeWithSignature("auctionState()");
+        address[] memory result = new address[](maxCount);
+        bytes memory returnData;
+        address auction;
+        bool success;
+        uint count;
+        for (uint32 i = liveAuctionStartIndex; i < liveAuctionEndIndex; i++) {
+            auction = auctions[i];
+            (success, returnData) = auction.staticcall(payload);
+            if (success) {
+                if (uint8(returnData[31]) == 1) {
+                    result[i] = auction;
+                    count++;
+                }
+            }
+        }
+        address[] memory filteredResult = new address[](count);
+        for (uint i = 0; i < count; i++) {
+            filteredResult[i] = result[i];
+        }
+        return filteredResult;
     }
 }

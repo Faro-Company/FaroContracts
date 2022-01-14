@@ -149,10 +149,14 @@ describe("FaroEnglishAuction", function () {
         auctionAddress
       );
       participantSigner = faroEnglishAuction.connect(this.wallets[0]);
-      expect((await participantSigner.getAuctionState()).toString()).to.equal(
+      expect((await participantSigner.auctionState()).toString()).to.equal(
         AUCTION_DEPLOYED_STATE
       );
     }
+  });
+
+  it("Num of live auctions is 0 before start", async function () {
+    expect((await this.signers[0].getLiveAuctions(0, 1)).length).to.equal(0);
   });
 
   it("Auction cannot be started by nonOwner", async function () {
@@ -196,8 +200,11 @@ describe("FaroEnglishAuction", function () {
       participantSigner = faroEnglishAuction.connect(this.wallets[i]);
       tx = await participantSigner.start();
       await tx.wait();
-      expect((await participantSigner.getAuctionState()).toString()).to.equal(
+      expect((await participantSigner.auctionState()).toString()).to.equal(
         AUCTION_STARTED_STATE
+      );
+      expect((await this.signers[0].getLiveAuctions(0, i + 1)).length).to.equal(
+        i + 1
       );
     }
   });
@@ -271,7 +278,7 @@ describe("FaroEnglishAuction", function () {
     const participantSigner = faroEnglishAuction.connect(this.wallets[3]);
     const tx = await participantSigner.cancelAuction();
     await tx.wait();
-    expect((await participantSigner.getAuctionState()).toString()).to.equal(
+    expect((await participantSigner.auctionState()).toString()).to.equal(
       AUCTION_CANCELLED_STATE
     );
   });
@@ -448,7 +455,7 @@ describe("FaroEnglishAuction", function () {
     const participantSigner = faroEnglishAuction.connect(this.wallets[2]);
     const tx = await participantSigner.end();
     tx.wait();
-    expect((await participantSigner.getAuctionState()).toString()).to.equal(
+    expect((await participantSigner.auctionState()).toString()).to.equal(
       AUCTION_STARTED_STATE
     );
   });
@@ -479,7 +486,7 @@ describe("FaroEnglishAuction", function () {
       participantSigner = engAuction.connect(this.wallets[2]);
       tx = await participantSigner.end();
       tx.wait();
-      expect((await participantSigner.getAuctionState()).toString()).to.equal(
+      expect((await participantSigner.auctionState()).toString()).to.equal(
         AUCTION_ENDED_STATE
       );
     }
@@ -619,5 +626,9 @@ describe("FaroEnglishAuction", function () {
       participantSigner.withdraw(),
       "Withdrawal amount cannot be 0."
     );
+  });
+
+  it("Num of live auctions is 0 after end", async function () {
+    expect((await this.signers[0].getLiveAuctions(0, 10)).length).to.equal(0);
   });
 });

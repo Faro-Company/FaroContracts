@@ -12,7 +12,7 @@ contract FaroDutchAuctionFactory {
 
     event AuctionCreated(address offeringAddress, address auctionContract, address owner);
 
-    function createAuction(address faroOfferingAddress, uint256[] memory _priceUpdateArray, uint256 _supply,
+    function createAuction(address faroOfferingAddress, uint256[] memory _priceUpdateArray, uint32 _supply,
         address[] memory _eligibleBidders) public {
         address newAuction = address(new FaroDutchAuction(faroOfferingAddress, msg.sender,
             _priceUpdateArray, _supply, _eligibleBidders));
@@ -32,4 +32,32 @@ contract FaroDutchAuctionFactory {
     function getAuctionCount() public view returns(uint256) {
         return auctionCount;
     }
+
+    function getLiveAuctions(uint32 liveAuctionStartIndex,
+        uint32 liveAuctionEndIndex) public view returns (address[] memory) {
+        uint32 maxCount = liveAuctionEndIndex - liveAuctionStartIndex;
+        uint32 count;
+        require(auctionCount >= maxCount);
+        bytes memory payload = abi.encodeWithSignature("auctionState()");
+        address[] memory result = new address[](maxCount);
+        address auction;
+        bytes memory returnData;
+        bool success;
+        for (uint i = liveAuctionStartIndex; i < liveAuctionEndIndex; i++) {
+            auction = auctions[i];
+            (success, returnData) = auction.staticcall(payload);
+            if (success) {
+                if (uint8(returnData[31]) == 1) {
+                    result[i] = auction;
+                    count++;
+                }
+            }
+        }
+        address[] memory filteredResult = new address[](count);
+        for (uint i = 0; i < count; i++) {
+            filteredResult[i] = result[i];
+        }
+        return filteredResult;
+    }
+
 }

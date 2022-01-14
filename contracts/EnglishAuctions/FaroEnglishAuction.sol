@@ -102,10 +102,6 @@ contract FaroEnglishAuction {
         return bids[bidder];
     }
 
-    function getAuctionState() public view returns(AuctionState) {
-        return auctionState;
-    }
-
     function end() public {
         _end();
     }

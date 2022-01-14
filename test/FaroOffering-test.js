@@ -43,23 +43,6 @@ describe("FaroOffering", function () {
       this.allocations.push(this.fairAlloc);
     }
     this.supply = PARTICIPANTS_NUM * this.fairAlloc;
-
-    const FarownershipToken = await ethers.getContractFactory("Farownership");
-    this.farownershipToken = await FarownershipToken.deploy(
-      NAME,
-      SYMBOL,
-      TOKEN_URI
-    );
-    await this.farownershipToken.deployed();
-
-    const ownershipTokenAddress = this.farownershipToken.address;
-
-    const erc721ContractWithSigner = this.farownershipToken.connect(
-      this.ownerSigner
-    );
-    const mintTx = await erc721ContractWithSigner.mint(this.user);
-    await mintTx.wait();
-
     const ERCVaultFactory = await ethers.getContractFactory(
       "FaroOfferingFactory"
     );
@@ -67,31 +50,51 @@ describe("FaroOffering", function () {
     await this.ercVaultFactory.deployed();
     const tokenVaultFactoryAddress = this.ercVaultFactory.address;
 
-    const erc721RecipientSigner = this.farownershipToken.connect(
-      this.projectFundRaisingSigner
-    );
-    const approveTx = await erc721RecipientSigner.approve(
-      tokenVaultFactoryAddress,
-      1
-    );
-    await approveTx.wait();
+    const FarownershipToken = await ethers.getContractFactory("Farownership");
+    const ownershipAddresses = [];
+
+    for (let i = 0; i < 2; i++) {
+      this.farownershipToken = await FarownershipToken.deploy(
+        NAME,
+        SYMBOL,
+        TOKEN_URI
+      );
+      await this.farownershipToken.deployed();
+      ownershipAddresses.push(this.farownershipToken.address);
+      const erc721ContractWithSigner = this.farownershipToken.connect(
+        this.ownerSigner
+      );
+      const mintTx = await erc721ContractWithSigner.mint(this.user);
+      await mintTx.wait();
+
+      const erc721RecipientSigner = this.farownershipToken.connect(
+        this.projectFundRaisingSigner
+      );
+      const approveTx = await erc721RecipientSigner.approve(
+        tokenVaultFactoryAddress,
+        1
+      );
+      await approveTx.wait();
+    }
 
     this.factoryWithSigner = this.ercVaultFactory.connect(this.ownerSigner);
-
-    const tx = await this.factoryWithSigner.mint(
-      ownershipTokenAddress,
-      this.user,
-      this.user,
-      this.supply,
-      LIST_PRICE_AS_ETH,
-      LISTING_PERIOD,
-      NAME,
-      SYMBOL,
-      this.funderAddresses,
-      this.allocations
-    );
-    await tx.wait();
-    this.offeringAddress = await this.factoryWithSigner.getVault(0);
+    let tx;
+    for (let i = 0; i < 2; i++) {
+      tx = await this.factoryWithSigner.mint(
+        ownershipAddresses[i],
+        this.user,
+        this.user,
+        this.supply,
+        LIST_PRICE_AS_ETH,
+        LISTING_PERIOD,
+        NAME,
+        SYMBOL,
+        this.funderAddresses,
+        this.allocations
+      );
+      await tx.wait();
+    }
+    this.offeringAddress = await this.factoryWithSigner.getOffering(0);
     this.OfferingVault = await ethers.getContractFactory("FaroOffering");
     this.offeringVault = await this.OfferingVault.attach(this.offeringAddress);
     this.ownerWithOffering = this.offeringVault.connect(
@@ -101,6 +104,12 @@ describe("FaroOffering", function () {
     this.participantSigner = this.offeringVault.connect(
       this.offeringParticipants[0]
     );
+  });
+
+  it("The number of live offerings is 0 before start", async function () {
+    expect(
+      (await this.factoryWithSigner.getLiveOfferings(0, 2)).length
+    ).to.equal(0);
   });
 
   it("Cannot be started by non-owner", async function () {
@@ -120,7 +129,13 @@ describe("FaroOffering", function () {
   it("Can be started by the owner", async function () {
     const startTx = await this.ownerWithOffering.start();
     await startTx.wait();
-    expect(await this.ownerWithOffering.getOfferingState()).to.equal(1);
+    expect(await this.ownerWithOffering.offeringState()).to.equal(1);
+  });
+
+  it("The number of live offerings is 1 after start ", async function () {
+    expect(
+      (await this.factoryWithSigner.getLiveOfferings(0, 2)).length
+    ).to.equal(1);
   });
 
   it("Cannot bid if not among funders", async function () {
@@ -268,6 +283,12 @@ describe("FaroOffering", function () {
     expect(await this.participantSigner.paused()).to.equal(true);
   });
 
+  it("The number of live offerings is 0 when paused", async function () {
+    expect(
+      (await this.factoryWithSigner.getLiveOfferings(0, 2)).length
+    ).to.equal(0);
+  });
+
   it("Cant buy when paused", async function () {
     const fundsToSend = ethers.utils.parseEther(
       (BUY_AMOUNT * LIST_PRICE).toString()
@@ -291,6 +312,12 @@ describe("FaroOffering", function () {
     const tx = await this.ownerWithOffering.unpause();
     await tx.wait();
     expect(await this.participantSigner.paused()).to.equal(false);
+  });
+
+  it("The number of live offerings is back to 1 when unpaused", async function () {
+    expect(
+      (await this.factoryWithSigner.getLiveOfferings(0, 2)).length
+    ).to.equal(1);
   });
 
   it("Bidding finishes when allocations are all bought", async function () {
@@ -334,9 +361,7 @@ describe("FaroOffering", function () {
           (balance - fundsToSend - gas)
       ).lessThan(Math.pow(10, 9));
     }
-    expect((await participantSigner.getOfferingState()).toString()).to.equal(
-      "2"
-    );
+    expect((await participantSigner.offeringState()).toString()).to.equal("2");
   });
 
   it("Cannot bid on ended offering", async function () {
@@ -344,5 +369,11 @@ describe("FaroOffering", function () {
       this.participantSigner.bid(BUY_AMOUNT),
       "Offering is not live."
     );
+  });
+
+  it("The number of live offerings is 0 after end", async function () {
+    expect(
+      (await this.factoryWithSigner.getLiveOfferings(0, 2)).length
+    ).to.equal(0);
   });
 });

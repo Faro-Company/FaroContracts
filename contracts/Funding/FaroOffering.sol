@@ -13,20 +13,19 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
     address private token;
     FaroFractional private fractional;
 
-    address payable private projectFundingAddress;
+    address payable public projectFundingAddress;
     address public owner;
 
-    uint256 private listingPrice;
-    uint256 private listingPeriod;
-    uint256 private listingEnd;
+    uint256 public listingPrice;
+    uint256 public listingPeriod;
+    uint256 public listingEnd;
 
     enum OfferingState { inactive, live, ended}
 
-    OfferingState private offeringState;
+    OfferingState public offeringState;
 
-    mapping(address => uint256) private funders;
-
-    uint256 private remaining;
+    mapping(address => uint32) private funders;
+    uint32 public remaining;
 
     event Start(address starter);
     event Bid(address bidder, uint256 amount);
@@ -45,33 +44,21 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
         _;
     }
 
-    function getProjectFundingAddress() public view returns(address payable) {
-        return projectFundingAddress;
-    }
-
-    function getOfferingState() public view returns (OfferingState) {
-        return offeringState;
-    }
-
     function getRemainingAllocation(address funder) public view returns(uint256) {
         return funders[funder];
-    }
-
-    function getRemaining() public view returns(uint256) {
-        return remaining;
-    }
-
-    function getListingPrice() public view returns(uint256) {
-        return listingPrice;
     }
 
     function getFractionalBalance(address funder) public view returns(uint256) {
         return fractional.balanceOf(funder);
     }
 
+    function getFractionalAddress() public view returns (address) {
+        return address(fractional);
+    }
+
     function initialize(address _token, address payable _projectFundingAddress, address _owner,
-        uint256 _supply, uint256 _listingPrice, uint _listingPeriod, string memory _name, string memory _symbol,
-        address[] memory _funderAddresses, uint256[] memory allocations) external initializer {
+        uint32 _supply, uint256 _listingPrice, uint _listingPeriod, string memory _name, string memory _symbol,
+        address[] memory _funderAddresses, uint32[] memory allocations) external initializer {
         // initialize inherited contracts
         __ERC721Holder_init();
         fractional = new FaroFractional(_name, _symbol, _supply, address(this));
@@ -88,10 +75,10 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
     }
 
     function _createFundersMapping(address[] memory _funderAddresses,
-        uint256[] memory allocations) internal returns (uint256) {
+        uint32[] memory allocations) internal returns (uint32) {
         require(_funderAddresses.length == allocations.length,
             "Funders and allocation array sizes cannot be different");
-        uint256 total;
+        uint32 total;
         for (uint i = 0; i < _funderAddresses.length; i++) {
             funders[_funderAddresses[i]] = allocations[i];
             total += allocations[i];
@@ -106,18 +93,20 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
         emit Start(msg.sender);
     }
 
-    function bid(uint _amount) external payable timeTransition {
-        uint256 totalToPay = _amount * listingPrice;
+    function bid(uint32 _amount) external payable timeTransition {
         require(!paused(), "The bid is paused.");
         require(funders[msg.sender] > 0, "Address is not allowed to participate in the offering.");
         require(msg.value > 0, "Funds sent cannot be zero.");
         require(_amount > 0, "Bid amount cannot be zero.");
         require(funders[msg.sender] >= _amount, "Bid is more than allocated for this address.");
-        require(totalToPay <= msg.value, "Funds sent for bid is less than the total capital required to buy the amount.");
+        uint256 totalToPay = _amount * listingPrice;
+        require(totalToPay <= msg.value,
+            "Funds sent for bid is less than the total capital required to buy the amount.");
         require(remaining >= _amount, "Remaining is less than the amount that is bid.");
         remaining -= _amount;
         funders[msg.sender] -= _amount;
-        require(payable(projectFundingAddress).send(totalToPay), "Transfer amount not successful");
+        (bool success, ) = payable(projectFundingAddress).call{value: totalToPay}("");
+        require(success, "Transfer amount not successful");
         fractional.transfer(msg.sender, _amount);
         emit Bid(msg.sender, _amount);
         if (remaining == 0) {
@@ -143,15 +132,7 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
         _unpause();
     }
 
-    function getFractionalAddress() public view returns (address) {
-        return address(fractional);
-    }
-
-    function balanceOfFractional(address _holder) public view returns (uint256) {
-        return fractional.balanceOf(_holder);
-    }
-
-    function extendToFaroDutchAuction(address auctionAddress, uint newSupply) public isOwner {
+    function extendToFaroDutchAuction(address auctionAddress, uint32 newSupply) public isOwner {
         require(offeringState == OfferingState.ended, "Offering is not ended");
         fractional.mint(newSupply, auctionAddress);
     }

@@ -8,22 +8,22 @@ import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 
 contract FaroDutchAuction {
 
-    uint constant DAYS_IN_SECS = 86400;
-    uint constant MAX_TIME_TICKS_ALLOWED = 1440;
+    uint32 constant DAYS_IN_SECS = 86400;
+    uint32 constant MAX_TIME_TICKS_ALLOWED = 1440;
 
     FaroOffering public offerableOwnership;
     FaroFractional public immutable fractional;
     mapping (address => uint) public eligibleBidders;
 
-    uint256 remaining;
-    uint256 supply;
+    uint32 public remaining;
+    uint32 supply;
     address public owner;
 
-    uint256 auctionStopPrice;
-    uint256 auctionCurrentPrice;
+    uint256 public auctionStopPrice;
+    uint256 public auctionCurrentPrice;
     uint256[] priceUpdateArray;
-    uint256 tickSize;
-    uint256 public timeTick;
+    uint16 tickSize;
+    uint16 public timeTick;
 
     address payable public projectFundingAddress;
 
@@ -58,7 +58,6 @@ contract FaroDutchAuction {
         _;
     }
 
-
     modifier updateAuctionState() {
         if (block.timestamp > endTime || timeTick == tickSize) {
             _end();
@@ -67,7 +66,7 @@ contract FaroDutchAuction {
     }
 
     modifier updatePrice() {
-        timeTick = (block.timestamp - startTime) / DAYS_IN_SECS;
+        timeTick = uint16((block.timestamp - startTime) / DAYS_IN_SECS);
         if (timeTick > tickSize) {
             timeTick = tickSize;
         }
@@ -75,33 +74,25 @@ contract FaroDutchAuction {
         _;
     }
 
-    function getAuctionState() public view returns(AuctionState) {
-        return auctionState;
-    }
-
-    function getCurrentPrice() public view returns(uint256) {
-        return auctionCurrentPrice;
+    function getFractionalBalance(address funder) public view returns(uint256) {
+        return fractional.balanceOf(funder);
     }
 
     function setCurrentPrice() public updatePrice updateAuctionState returns(uint256) {
         return auctionCurrentPrice;
     }
 
-    function getRemaining() public view returns(uint) {
-        return remaining;
-    }
-
-    constructor(address _offeringAddress, address _owner, uint[] memory _priceUpdateArray, uint _supply,
+    constructor(address _offeringAddress, address _owner, uint[] memory _priceUpdateArray, uint32 _supply,
         address[] memory _eligibleBidders) {
         require(_priceUpdateArray.length <= MAX_TIME_TICKS_ALLOWED, "Too large price update array");
         offerableOwnership = FaroOffering(_offeringAddress);
         require(_owner == offerableOwnership.owner(), "Auction can only be created by offering owner");
         priceUpdateArray = _priceUpdateArray;
-        tickSize = priceUpdateArray.length - 1;
+        tickSize = uint16(priceUpdateArray.length - 1);
         owner = _owner;
         fractional = FaroFractional(offerableOwnership.getFractionalAddress());
-        auctionStopPrice = offerableOwnership.getListingPrice();
-        projectFundingAddress = offerableOwnership.getProjectFundingAddress();
+        auctionStopPrice = offerableOwnership.listingPrice();
+        projectFundingAddress = offerableOwnership.projectFundingAddress();
         auctionCurrentPrice = priceUpdateArray[0];
         auctionState = AuctionState.AuctionDeployed;
         supply = _supply;
@@ -124,7 +115,7 @@ contract FaroDutchAuction {
         auctionState = AuctionState.AuctionStarted;
     }
 
-    function bid(uint256 _amount) public payable isNotOwner onlyStarted updatePrice updateAuctionState {
+    function bid(uint32 _amount) public payable isNotOwner onlyStarted updatePrice updateAuctionState {
         uint totalToPay = _amount * auctionCurrentPrice;
         require(eligibleBidders[msg.sender] == 1, "Bidder is not eligible.");
         require(msg.value >= totalToPay, "Bid value is less than current price.");
@@ -137,10 +128,6 @@ contract FaroDutchAuction {
         if (remaining == 0) {
             _end();
         }
-    }
-
-    function getFractionalBalance(address funder) public view returns(uint256) {
-        return fractional.balanceOf(funder);
     }
 
     function end() public isOwner {

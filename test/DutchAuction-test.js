@@ -114,7 +114,7 @@ describe("FaroDutchAuction", function () {
       this.allocations
     );
     await tx.wait();
-    this.offeringAddress = await this.factoryWithSigner.getVault(0);
+    this.offeringAddress = await this.factoryWithSigner.getOffering(0);
     this.OfferingVault = await ethers.getContractFactory("FaroOffering");
     this.offeringVault = await this.OfferingVault.attach(this.offeringAddress);
     this.ownerWithOffering = this.offeringVault.connect(
@@ -128,9 +128,9 @@ describe("FaroDutchAuction", function () {
     const endTx = await this.ownerWithOffering.end();
     await endTx.wait();
 
-    expect(
-      (await this.ownerWithOffering.getOfferingState()).toString()
-    ).to.equal("2");
+    expect((await this.ownerWithOffering.offeringState()).toString()).to.equal(
+      "2"
+    );
     const FaroDutchAuctionFactory = await ethers.getContractFactory(
       "FaroDutchAuctionFactory"
     );
@@ -143,7 +143,7 @@ describe("FaroDutchAuction", function () {
       this.faroDutchAuctionFactory.connect(this.nonOwnerSigner);
 
     this.listingPrice = ethers.utils.formatEther(
-      await this.ownerWithOffering.getListingPrice()
+      await this.ownerWithOffering.listingPrice()
     );
     this.startPrice = ethers.utils.parseEther(
       (2 * this.listingPrice).toString()
@@ -204,7 +204,7 @@ describe("FaroDutchAuction", function () {
       this.projectFundRaisingSigner.address
     );
     expect(
-      (await faroDutchAuctionOwnerSigner.getAuctionState()).toString()
+      (await faroDutchAuctionOwnerSigner.auctionState()).toString()
     ).to.equal(AUCTION_DEPLOYED_STATE);
     const mintFractionalTransaction =
       await this.ownerWithOffering.extendToFaroDutchAuction(
@@ -217,6 +217,17 @@ describe("FaroDutchAuction", function () {
         await this.ownerWithOffering.getFractionalBalance(faroDutchAuction)
       ).toString()
     ).to.equal(SUPPLY.toString());
+  });
+
+  it("Num of live auctions is 0 before start", async function () {
+    expect(
+      (
+        await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLiveAuctions(
+          0,
+          1
+        )
+      ).length
+    ).to.equal(0);
   });
 
   it("Auction cannot be started by non-owner", async function () {
@@ -248,11 +259,22 @@ describe("FaroDutchAuction", function () {
     const startTx = await faroDutchAuctionOwnerSigner.start();
     await startTx.wait();
     expect(
-      (await faroDutchAuctionOwnerSigner.getAuctionState()).toString()
+      (await faroDutchAuctionOwnerSigner.auctionState()).toString()
     ).to.equal(AUCTION_STARTED_STATE);
     expect(
-      (await faroDutchAuctionOwnerSigner.getCurrentPrice()).toString()
+      (await faroDutchAuctionOwnerSigner.auctionCurrentPrice()).toString()
     ).to.equal(this.startPrice.toString());
+  });
+
+  it("Num of live auctions is 1 after start", async function () {
+    expect(
+      (
+        await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLiveAuctions(
+          0,
+          1
+        )
+      ).length
+    ).to.equal(1);
   });
 
   it("Owner cannot bid", async function () {
@@ -265,7 +287,8 @@ describe("FaroDutchAuction", function () {
     const faroDutchAuctionOwnerSigner = faroDutchAuctionObject.connect(
       this.projectFundRaisingSigner
     );
-    const currentPrice = await faroDutchAuctionOwnerSigner.getCurrentPrice();
+    const currentPrice =
+      await faroDutchAuctionOwnerSigner.auctionCurrentPrice();
     await expectRevert(
       faroDutchAuctionOwnerSigner.bid(BUY_AMOUNT, {
         value: currentPrice,
@@ -285,7 +308,7 @@ describe("FaroDutchAuction", function () {
       this.nonOwnerSigner
     );
     const currentPriceInWei =
-      await faroDutchAuctionNonOwnerSigner.getCurrentPrice();
+      await faroDutchAuctionNonOwnerSigner.auctionCurrentPrice();
     const currentPriceInEth = ethers.utils.formatEther(currentPriceInWei);
     await expectRevert(
       faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
@@ -306,7 +329,7 @@ describe("FaroDutchAuction", function () {
       this.offeringParticipants[1]
     );
     const currentPriceInWei =
-      await faroDutchAuctionNonOwnerSigner.getCurrentPrice();
+      await faroDutchAuctionNonOwnerSigner.auctionCurrentPrice();
     const currentPriceInEth = ethers.utils.formatEther(currentPriceInWei);
     await expectRevert(
       faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
@@ -336,7 +359,7 @@ describe("FaroDutchAuction", function () {
     );
     const previousBalance = ethers.utils.formatEther(previousBalanceInWei);
     const currentPriceInWei =
-      await faroDutchAuctionNonOwnerSigner.getCurrentPrice();
+      await faroDutchAuctionNonOwnerSigner.auctionCurrentPrice();
     const currentPriceInEthers = ethers.utils.formatEther(currentPriceInWei);
     const paidMoney = currentPriceInEthers * BUY_AMOUNT;
     const bidTx = await faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
@@ -356,7 +379,7 @@ describe("FaroDutchAuction", function () {
       ).toString()
     ).to.equal(BUY_AMOUNT.toString());
     expect(
-      (await faroDutchAuctionNonOwnerSigner.getRemaining()).toString()
+      (await faroDutchAuctionNonOwnerSigner.remaining()).toString()
     ).to.equal((SUPPLY - BUY_AMOUNT).toString());
   });
 
@@ -377,7 +400,7 @@ describe("FaroDutchAuction", function () {
     );
     const previousBalance = ethers.utils.formatEther(previousBalanceInWei);
     const currentPriceInWei =
-      await faroDutchAuctionNonOwnerSigner.getCurrentPrice();
+      await faroDutchAuctionNonOwnerSigner.auctionCurrentPrice();
     const currentPriceInEth = ethers.utils.formatEther(currentPriceInWei);
     const paidMoney = currentPriceInEth * BUY_AMOUNT;
     const bidTx = await faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
@@ -399,7 +422,7 @@ describe("FaroDutchAuction", function () {
       ).toString()
     ).to.equal(twiceBuyAmount.toString());
     expect(
-      (await faroDutchAuctionNonOwnerSigner.getRemaining()).toString()
+      (await faroDutchAuctionNonOwnerSigner.remaining()).toString()
     ).to.equal((SUPPLY - twiceBuyAmount).toString());
   });
 
@@ -419,7 +442,7 @@ describe("FaroDutchAuction", function () {
       await ethers.provider.getBalance(projectFundingAddress)
     );
     const currentPriceInEth = ethers.utils.formatEther(
-      await faroDutchAuctionNonOwnerSigner.getCurrentPrice()
+      await faroDutchAuctionNonOwnerSigner.auctionCurrentPrice()
     );
     const paidMoney = currentPriceInEth * BUY_AMOUNT;
     const bidTx = await faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
@@ -440,7 +463,7 @@ describe("FaroDutchAuction", function () {
       ).toString()
     ).to.equal(BUY_AMOUNT.toString());
     expect(
-      (await faroDutchAuctionNonOwnerSigner.getRemaining()).toString()
+      (await faroDutchAuctionNonOwnerSigner.remaining()).toString()
     ).to.equal((SUPPLY - tripleBuyAmount).toString());
   });
 
@@ -461,7 +484,7 @@ describe("FaroDutchAuction", function () {
     const priceTx = await faroDutchAuctionNonOwnerSigner.setCurrentPrice();
     await priceTx.wait();
     expect(
-      (await faroDutchAuctionNonOwnerSigner.getCurrentPrice()).toString()
+      (await faroDutchAuctionNonOwnerSigner.auctionCurrentPrice()).toString()
     ).to.equal(this.ethPriceChanges[FAST_FORWARD_PERIOD1].toString());
   });
 
@@ -481,7 +504,7 @@ describe("FaroDutchAuction", function () {
       await ethers.provider.getBalance(projectFundingAddress)
     );
     const currentPriceInEth = ethers.utils.formatEther(
-      await faroDutchAuctionNonOwnerSigner.getCurrentPrice()
+      await faroDutchAuctionNonOwnerSigner.auctionCurrentPrice()
     );
     const paidMoney = currentPriceInEth * BUY_AMOUNT;
     const bidTx = await faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
@@ -505,7 +528,7 @@ describe("FaroDutchAuction", function () {
       ).toString()
     ).to.equal(twiceBuyAmount.toString());
     expect(
-      (await faroDutchAuctionNonOwnerSigner.getRemaining()).toString()
+      (await faroDutchAuctionNonOwnerSigner.remaining()).toString()
     ).to.equal((SUPPLY - 2 * twiceBuyAmount).toString());
   });
 
@@ -525,7 +548,7 @@ describe("FaroDutchAuction", function () {
       await ethers.provider.getBalance(projectFundingAddress)
     );
     const currentPrice = ethers.utils.formatEther(
-      await faroDutchAuctionNonOwnerSigner.getCurrentPrice()
+      await faroDutchAuctionNonOwnerSigner.auctionCurrentPrice()
     );
     await expectRevert(
       faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
@@ -557,7 +580,7 @@ describe("FaroDutchAuction", function () {
       ).toString()
     ).to.equal(tripleBuyAmount.toString());
     expect(
-      (await faroDutchAuctionNonOwnerSigner.getRemaining()).toString()
+      (await faroDutchAuctionNonOwnerSigner.remaining()).toString()
     ).to.equal((SUPPLY - 5 * BUY_AMOUNT).toString());
   });
 
@@ -578,7 +601,7 @@ describe("FaroDutchAuction", function () {
     const setPriceTx = await faroDutchAuctionNonOwnerSigner.setCurrentPrice();
     await setPriceTx.wait();
     expect(
-      (await faroDutchAuctionNonOwnerSigner.getCurrentPrice()).toString()
+      (await faroDutchAuctionNonOwnerSigner.auctionCurrentPrice()).toString()
     ).to.equal(
       this.ethPriceChanges[
         FAST_FORWARD_PERIOD1 + FAST_FORWARD_PERIOD2
@@ -602,7 +625,7 @@ describe("FaroDutchAuction", function () {
       await ethers.provider.getBalance(projectFundingAddress)
     );
     const currentPrice = ethers.utils.formatEther(
-      await faroDutchAuctionNonOwnerSigner.getCurrentPrice()
+      await faroDutchAuctionNonOwnerSigner.auctionCurrentPrice()
     );
     await expectRevert(
       faroDutchAuctionNonOwnerSigner.bid(BUY_AMOUNT, {
@@ -633,7 +656,7 @@ describe("FaroDutchAuction", function () {
       ).toString()
     ).to.equal(quadrupleBuyAmount.toString());
     expect(
-      (await faroDutchAuctionNonOwnerSigner.getRemaining()).toString()
+      (await faroDutchAuctionNonOwnerSigner.remaining()).toString()
     ).to.equal((SUPPLY - 6 * BUY_AMOUNT).toString());
   });
 
@@ -654,7 +677,7 @@ describe("FaroDutchAuction", function () {
     const setPriceTx = await faroDutchAuctionNonOwnerSigner.setCurrentPrice();
     await setPriceTx.wait();
     expect(
-      (await faroDutchAuctionNonOwnerSigner.getCurrentPrice()).toString()
+      (await faroDutchAuctionNonOwnerSigner.auctionCurrentPrice()).toString()
     ).to.equal(
       this.ethPriceChanges[
         FAST_FORWARD_PERIOD1 + FAST_FORWARD_PERIOD2 + FAST_FORWARD_PERIOD3
@@ -664,7 +687,7 @@ describe("FaroDutchAuction", function () {
       this.ethPriceChanges.length - 1
     );
     expect(
-      (await faroDutchAuctionNonOwnerSigner.getAuctionState()).toString()
+      (await faroDutchAuctionNonOwnerSigner.auctionState()).toString()
     ).to.equal(AUCTION_ENDED_STATE);
   });
 
@@ -679,7 +702,7 @@ describe("FaroDutchAuction", function () {
       this.offeringParticipants[2]
     );
     const currentPriceInEth = ethers.utils.formatEther(
-      await faroDutchAuctionNonOwnerSigner.getCurrentPrice()
+      await faroDutchAuctionNonOwnerSigner.auctionCurrentPrice()
     );
     const paidMoney = currentPriceInEth * BUY_AMOUNT;
     await expectRevert(
@@ -688,5 +711,16 @@ describe("FaroDutchAuction", function () {
       }),
       "Auction is not live."
     );
+  });
+
+  it("Num of live auctions is 0 after end", async function () {
+    expect(
+      (
+        await this.faroDutchAuctionFactoryWithNonOwnerSigner.getLiveAuctions(
+          0,
+          1
+        )
+      ).length
+    ).to.equal(0);
   });
 });
