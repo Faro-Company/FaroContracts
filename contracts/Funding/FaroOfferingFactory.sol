@@ -26,6 +26,12 @@ contract FaroOfferingFactory is Ownable, Pausable {
         string memory _name, string memory _symbol, address[] memory _funderAddresses,
         uint32[] memory _allocations) external onlyOwner whenNotPaused returns(uint256) {
 
+        for (uint i = 0; i < _funderAddresses.length; i++){
+            if (_funderAddresses[i] == _owner) {
+                revert("Owner address cannot be among funders");
+            }
+        }
+
         bytes memory _initializationCalldata = abi.encodeWithSignature(
             "initialize(address,address,address,uint32,uint256,uint256,string,string,address[],uint32[])",
             _token,
@@ -41,11 +47,11 @@ contract FaroOfferingFactory is Ownable, Pausable {
 
         );
 
-        address vault = address(new InitializedProxy(logic, _initializationCalldata));
-        IERC721(_token).safeTransferFrom(_projectFundingAddress, vault, ID);
-        offerings.push(vault);
+        address offering = address(new InitializedProxy(logic, _initializationCalldata));
+        IERC721(_token).safeTransferFrom(_projectFundingAddress, offering, ID);
+        offerings.push(offering);
         offeringCount++;
-        emit Mint(_token, _listPrice, vault, offeringCount);
+        emit Mint(_token, _listPrice, offering, offeringCount);
         return offeringCount - 1;
     }
 

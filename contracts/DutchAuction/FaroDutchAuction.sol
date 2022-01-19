@@ -13,7 +13,7 @@ contract FaroDutchAuction {
 
     FaroOffering public offerableOwnership;
     FaroFractional public immutable fractional;
-    mapping (address => uint) public eligibleBidders;
+    mapping (address => bool) public eligibleBidders;
 
     uint32 public remaining;
     uint32 supply;
@@ -87,6 +87,11 @@ contract FaroDutchAuction {
         require(_priceUpdateArray.length <= MAX_TIME_TICKS_ALLOWED, "Too large price update array");
         offerableOwnership = FaroOffering(_offeringAddress);
         require(_owner == offerableOwnership.owner(), "Auction can only be created by offering owner");
+        for (uint i = 0; i < _eligibleBidders.length; i++) {
+            if (_eligibleBidders[i] == _owner) {
+                revert("Owner cannot be among eligible bidders");
+            }
+        }
         priceUpdateArray = _priceUpdateArray;
         tickSize = uint16(priceUpdateArray.length - 1);
         owner = _owner;
@@ -102,7 +107,7 @@ contract FaroDutchAuction {
 
     function createEligibleBiddersTable(address[] memory _eligibleBidders) internal {
         for (uint i = 0; i < _eligibleBidders.length; i++) {
-            eligibleBidders[_eligibleBidders[i]] = 1;
+            eligibleBidders[_eligibleBidders[i]] = true;
         }
     }
 
@@ -117,7 +122,7 @@ contract FaroDutchAuction {
 
     function bid(uint32 _amount) public payable isNotOwner onlyStarted updatePrice updateAuctionState {
         uint totalToPay = _amount * auctionCurrentPrice;
-        require(eligibleBidders[msg.sender] == 1, "Bidder is not eligible.");
+        require(eligibleBidders[msg.sender], "Bidder is not eligible.");
         require(msg.value >= totalToPay, "Bid value is less than current price.");
         require(_amount <= remaining, "Bid amount is higher than remaining amount.");
         remaining -= _amount;
