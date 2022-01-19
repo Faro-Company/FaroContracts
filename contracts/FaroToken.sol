@@ -11,6 +11,7 @@ contract FaroToken is ERC20 {
     }
 
     function balancesOf(address[] holders) public view returns (uint[]) {
+        require(holders.length < 100, "Max number of balances to be retrieved is 100");
         address[] memory result = new address[](holders.length);
         for (uint i = 0; i < holders.length; i++) {
             result[i] = this.balanceOf(holders[i]);
