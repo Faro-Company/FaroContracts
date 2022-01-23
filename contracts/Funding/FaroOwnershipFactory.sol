@@ -1,10 +1,13 @@
+//SPDX-License-Identifier: MIT
+
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "./Farownership.sol";
 
-contract FaroOwnershipFactory {
+
+contract FaroOwnershipFactory is Ownable, Pausable {
 
     uint256 private ownershipCount;
 
@@ -12,7 +15,7 @@ contract FaroOwnershipFactory {
 
     event OwnershipCreated(address indexed token);
 
-    function createOwnershipNFT(string memory _contentName, string memory _symbol, string memory _agreementUri,
+    function createOwnership(string memory _contentName, string memory _symbol, string memory _agreementUri,
         address ownerAddress) external onlyOwner whenNotPaused returns(uint256) {
         Farownership ownership = new Farownership(_contentName, _symbol, _agreementUri);
         ownership.mint(ownerAddress);
@@ -24,7 +27,7 @@ contract FaroOwnershipFactory {
     }
 
     function getLastOwnership() public view returns (address) {
-        return offerings[ownershipCount - 1];
+        return ownerships[ownershipCount - 1];
     }
 
     function getNumOfTokens() public view returns (uint256) {
