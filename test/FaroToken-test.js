@@ -2,14 +2,14 @@ const { expect } = require("chai");
 const { ethers } = require("hardhat");
 const { BN, expectRevert } = require("@openzeppelin/test-helpers");
 
-const FARO_SUPPLY = new BN("2440000000000000000000000000");
+const FARO_SUPPLY = new BN("244000000000000000000000000");
 const NAME = "Faro Studio Token";
 const SYMBOL = "FARO";
 const WRONG_BALANCE = new BN("10");
-const TRANSFER_AMOUNT = new BN("10000000000");
-const DOUBLE_TRANSFER_AMOUNT = new BN("20000000000");
-const CHANGE = new BN("2439999999999999990000000000");
-const CHANGE_AFTER_SEND_TWICE = new BN("2439999999999999980000000000");
+const TRANSFER_AMOUNT = new BN("1000000000");
+const DOUBLE_TRANSFER_AMOUNT = new BN("2000000000");
+const CHANGE = new BN("243999999999999999000000000");
+const CHANGE_AFTER_SEND_TWICE = new BN("243999999999999998000000000");
 
 // Start test block
 describe("FaroToken", function () {

@@ -1,17 +1,19 @@
 //SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {FaroEnglishAuction} from './FaroEnglishAuction.sol';
 
-contract FaroEnglishAuctionFactory {
+contract FaroEnglishAuctionFactory is Ownable, Pausable {
 
     address[] public auctions;
     event AuctionCreated(address auctionContract, address owner);
     uint256 auctionCount;
 
     function createAuction(uint256 _bidIncrement, uint256 _auctionPeriodInSeconds,
-        address _token, uint256 _tokenId, uint256 _floorPrice) public {
+        address _token, uint256 _tokenId, uint256 _floorPrice) external whenNotPaused {
         FaroEnglishAuction newAuction = new FaroEnglishAuction(msg.sender, _bidIncrement,
             _auctionPeriodInSeconds, _token, _tokenId, _floorPrice);
         address auctionAddress = address(newAuction);
@@ -59,4 +61,13 @@ contract FaroEnglishAuctionFactory {
         }
         return filteredResult;
     }
+
+    function pause() external onlyOwner {
+        _pause();
+    }
+
+    function unpause() external onlyOwner {
+        _unpause();
+    }
+
 }

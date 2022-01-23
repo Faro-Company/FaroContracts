@@ -13,8 +13,6 @@ contract FaroOfferingFactory is Ownable, Pausable {
 
     uint256 private offeringCount;
 
-    uint private ID = 1;
-
     address[] public offerings;
 
     address logic = address(new FaroOffering());
@@ -48,7 +46,7 @@ contract FaroOfferingFactory is Ownable, Pausable {
         );
 
         address offering = address(new InitializedProxy(logic, _initializationCalldata));
-        IERC721(_token).safeTransferFrom(_projectFundingAddress, offering, ID);
+        //IERC721(_token).safeTransferFrom(_projectFundingAddress, offering, ID);
         offerings.push(offering);
         offeringCount++;
         emit Mint(_token, _listPrice, offering, offeringCount);
