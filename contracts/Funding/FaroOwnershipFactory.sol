@@ -20,8 +20,8 @@ contract FaroOwnershipFactory is Ownable, Pausable {
         Farownership ownership = new Farownership(_contentName, _symbol, _agreementUri);
         ownership.mint(ownerAddress);
         address newOwnership = address(ownership);
-        ownerships.push(address(newOwnership));
-        ownershipCount += 1;
+        ownerships.push(newOwnership);
+        ownershipCount++;
         emit OwnershipCreated(newOwnership);
         return ownershipCount;
     }
