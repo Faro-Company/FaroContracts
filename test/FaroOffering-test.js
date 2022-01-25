@@ -50,24 +50,33 @@ describe("FaroOffering", function () {
     await this.ercVaultFactory.deployed();
     const tokenVaultFactoryAddress = this.ercVaultFactory.address;
 
-    const FarownershipToken = await ethers.getContractFactory("Farownership");
-    const ownershipAddresses = [];
+    const FaroOwnershipFactory = await ethers.getContractFactory("FaroOwnershipFactory");
+    const faroOwnershipFactory =  await FaroOwnershipFactory.deploy();
+    await faroOwnershipFactory.deployed();
+    const faroOwnershipFactoryAddress = this.ercVaultFactory.address;
+    this.faroOwnershipWithSigner = faroOwnershipFactory.connect(this.ownerSigner);
 
+    const FaroOwnership = await ethers.getContractFactory("Farownership");
+
+    const ownershipAddresses = [];
+    let ownershipAddress;
+    let faroOwnership;
+    let erc721RecipientSigner;
+    let tx;
+    
     for (let i = 0; i < 2; i++) {
-      this.farownershipToken = await FarownershipToken.deploy(
+      tx = await faroOwnershipFactory.createOwnership(
         NAME,
         SYMBOL,
-        TOKEN_URI
+        TOKEN_URI,
+          this.user
       );
-      await this.farownershipToken.deployed();
-      ownershipAddresses.push(this.farownershipToken.address);
-      const erc721ContractWithSigner = this.farownershipToken.connect(
-        this.ownerSigner
-      );
-      const mintTx = await erc721ContractWithSigner.mint(this.user);
-      await mintTx.wait();
+      await tx.wait();
+      ownershipAddress = await faroOwnershipFactory.getLastOwnership();
+      ownershipAddresses.push(ownershipAddress);
+      faroOwnership = FaroOwnership.attach(ownershipAddress);
 
-      const erc721RecipientSigner = this.farownershipToken.connect(
+      const erc721RecipientSigner = faroOwnership.connect(
         this.projectFundRaisingSigner
       );
       const approveTx = await erc721RecipientSigner.approve(
@@ -78,7 +87,6 @@ describe("FaroOffering", function () {
     }
 
     this.factoryWithSigner = this.ercVaultFactory.connect(this.ownerSigner);
-    let tx;
     for (let i = 0; i < 2; i++) {
       tx = await this.factoryWithSigner.mint(
         ownershipAddresses[i],

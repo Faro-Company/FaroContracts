@@ -27,6 +27,7 @@ contract FaroOwnershipFactory is Ownable, Pausable {
     }
 
     function getLastOwnership() public view returns (address) {
+        require(ownerships.length > 0, "There aren't any ownerships created");
         return ownerships[ownershipCount - 1];
     }
 
