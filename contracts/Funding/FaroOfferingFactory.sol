@@ -66,6 +66,7 @@ contract FaroOfferingFactory is Ownable, Pausable {
 
     function getLiveOfferings(uint32 liveOfferingStartIndex,
         uint32 liveOfferingEndIndex) public view returns (address[] memory) {
+
         require(liveOfferingEndIndex > liveOfferingStartIndex, "End index must be greater than start index");
         uint32 maxCount = liveOfferingEndIndex - liveOfferingStartIndex;
         uint32 count;
@@ -73,6 +74,7 @@ contract FaroOfferingFactory is Ownable, Pausable {
         bytes memory offeringStatePayload = abi.encodeWithSignature("offeringState()");
         bytes memory pausedPayload = abi.encodeWithSignature("paused()");
         address[] memory result = new address[](maxCount);
+        uint16[] memory countIndex = new uint16[](maxCount);
         address offering;
 
         bytes memory returnData;
@@ -87,12 +89,15 @@ contract FaroOfferingFactory is Ownable, Pausable {
                 if (uint8(returnData[31]) == 1 && returnData2[31] == 0x0) {
                     result[i] = offering;
                     count++;
+                    countIndex[i] = count;
                 }
             }
         }
         address[] memory filteredResult = new address[](count);
         for (uint i = 0; i < count; i++) {
-            filteredResult[i] = result[i];
+            if (countIndex[i] > 0) {
+                filteredResult[i] = result[countIndex[i]];
+            }
         }
         return filteredResult;
     }
