@@ -44,11 +44,10 @@ contract FaroOfferingFactory is Ownable, Pausable {
             _allocations
 
         );
-
-        address offering = address(new InitializedProxy(logic, _initializationCalldata));
-        //IERC721(_token).safeTransferFrom(_projectFundingAddress, offering, ID);
         offerings.push(offering);
         offeringCount++;
+        address offering = address(new InitializedProxy(logic, _initializationCalldata));
+        //IERC721(_token).safeTransferFrom(_projectFundingAddress, offering, ID);
         emit Mint(_token, _listPrice, offering, offeringCount);
         return offeringCount - 1;
     }

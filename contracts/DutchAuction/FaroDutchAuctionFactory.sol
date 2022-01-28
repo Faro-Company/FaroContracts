@@ -16,11 +16,12 @@ contract FaroDutchAuctionFactory is Ownable, Pausable {
 
     function createAuction(address faroOfferingAddress, uint256[] memory _priceUpdateArray, uint32 _supply,
         address[] memory _eligibleBidders) external whenNotPaused {
+        auctions.push(newAuction);
+        auctionCount += 1;
         address newAuction = address(new FaroDutchAuction(faroOfferingAddress, msg.sender,
             _priceUpdateArray, _supply, _eligibleBidders));
-        auctions.push(newAuction);
         emit AuctionCreated(faroOfferingAddress, newAuction, msg.sender);
-        auctionCount += 1;
+
     }
 
     function getAuction(uint256 index) public view returns (address) {
