@@ -16,10 +16,10 @@ contract FaroEnglishAuctionFactory is Ownable, Pausable {
         address _token, uint256 _tokenId, uint256 _floorPrice) external whenNotPaused {
         FaroEnglishAuction newAuction = new FaroEnglishAuction(msg.sender, _bidIncrement,
             _auctionPeriodInSeconds, _token, _tokenId, _floorPrice);
-        auctions.push(auctionAddress);
-        auctionCount++;
         address auctionAddress = address(newAuction);
         IERC721(_token).transferFrom(msg.sender, auctionAddress, _tokenId);
+        auctions.push(auctionAddress);
+        auctionCount++;
         emit AuctionCreated(auctionAddress, msg.sender);
     }
 

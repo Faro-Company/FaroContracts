@@ -44,10 +44,11 @@ contract FaroOfferingFactory is Ownable, Pausable {
             _allocations
 
         );
-        offerings.push(offering);
-        offeringCount++;
+
         address offering = address(new InitializedProxy(logic, _initializationCalldata));
         //IERC721(_token).safeTransferFrom(_projectFundingAddress, offering, ID);
+        offerings.push(offering);
+        offeringCount++;
         emit Mint(_token, _listPrice, offering, offeringCount);
         return offeringCount - 1;
     }
@@ -74,7 +75,7 @@ contract FaroOfferingFactory is Ownable, Pausable {
         bytes memory offeringStatePayload = abi.encodeWithSignature("offeringState()");
         bytes memory pausedPayload = abi.encodeWithSignature("paused()");
         address[] memory result = new address[](maxCount);
-        uint16[] memory countIndex = new uint16[](maxCount);
+        uint[] memory countIndex = new uint[](maxCount);
         address offering;
 
         bytes memory returnData;
@@ -88,16 +89,14 @@ contract FaroOfferingFactory is Ownable, Pausable {
             if (success && success2) {
                 if (uint8(returnData[31]) == 1 && returnData2[31] == 0x0) {
                     result[i] = offering;
+                    countIndex[count] = i;
                     count++;
-                    countIndex[i] = count;
                 }
             }
         }
         address[] memory filteredResult = new address[](count);
         for (uint i = 0; i < count; i++) {
-            if (countIndex[i] > 0) {
-                filteredResult[i] = result[countIndex[i]];
-            }
+            filteredResult[i] = result[countIndex[i]];
         }
         return filteredResult;
     }
