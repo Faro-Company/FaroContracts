@@ -35,7 +35,7 @@ contract FaroOwnershipFactory is Ownable, Pausable {
         return ownershipCount;
     }
 
-    function getOffering(uint256 ownershipNum) public view returns (address) {
+    function getOwnership(uint256 ownershipNum) public view returns (address) {
         return ownerships[ownershipNum];
     }
 

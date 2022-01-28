@@ -231,7 +231,7 @@ describe("FaroOffering", function () {
   it("Can make a legit bid again without finishing the allocation", async function () {
     const participantAddress = this.offeringParticipants[0].address;
     const fundsToSend = ethers.utils.parseEther(
-      (BUY_AMOUNT * LIST_PRICE).toString()
+        (BUY_AMOUNT * LIST_PRICE).toString()
     );
     const gas = await this.participantSigner.estimateGas.bid(BUY_AMOUNT, {
       value: fundsToSend,
@@ -243,17 +243,17 @@ describe("FaroOffering", function () {
     });
     await tx.wait();
     expect(
-      (
-        await this.participantSigner.getRemainingAllocation(participantAddress)
-      ).toString()
+        (
+            await this.participantSigner.getRemainingAllocation(participantAddress)
+        ).toString()
     ).to.equal((this.fairAlloc - TOTAL_AMOUNT_TO_BE_BOUGHT).toString());
     expect(
-      (
-        await this.participantSigner.getFractionalBalance(participantAddress)
-      ).toString()
+        (
+            await this.participantSigner.getFractionalBalance(participantAddress)
+        ).toString()
     ).to.equal(TOTAL_AMOUNT_TO_BE_BOUGHT.toString());
     expect(
-      (await ethers.provider.getBalance(participantAddress)) -
+        (await ethers.provider.getBalance(participantAddress)) -
         (balance - fundsToSend - gas)
     ).lessThan(Math.pow(10, 9));
   });
@@ -276,6 +276,34 @@ describe("FaroOffering", function () {
       }),
       "Bid is more than allocated for this address."
     );
+  });
+
+  it("Cannot perform re-entrancy attack", async function () {
+    let errMessage = "";
+    let reenterAttack = async function(signer, buy_amount, sentFunds, txList) {
+      try {
+        for (let i = 0; i < 4; i++) {
+          const tx = await signer.bid(buy_amount, {
+            value: sentFunds,
+          });
+          txList.push(tx);
+        }
+      } catch(err) {
+        errMessage = err.message;
+      }
+      return txList;
+    };
+    const remainingAmount = this.fairAlloc - BUY_AMOUNT * 2;
+    const participantAddress = this.offeringParticipants[0].address;
+    const fundsToSend = ethers.utils.parseEther(
+        (remainingAmount * LIST_PRICE).toString()
+    );
+    const txes = [];
+    await reenterAttack(this.participantSigner, remainingAmount, fundsToSend, txes);
+    expect(errMessage).to.equal(
+        "VM Exception while processing transaction: reverted with" +
+        " reason string 'Address is not allowed to participate in the offering.'");
+    expect(txes.length).to.equal(1);
   });
 
   it("Non-owner cannot pause", async function () {
@@ -336,7 +364,7 @@ describe("FaroOffering", function () {
       fundsToSend,
       participantAddress,
       gas;
-    for (let i = 0; i < this.offeringParticipants.length; i++) {
+    for (let i = 1; i < this.offeringParticipants.length; i++) {
       participant = this.offeringParticipants[i];
       participantSigner = this.offeringVault.connect(participant);
       participantAddress = participant.address;
@@ -373,8 +401,13 @@ describe("FaroOffering", function () {
   });
 
   it("Cannot bid on ended offering", async function () {
+    const participant = this.offeringParticipants[4];
+    const participantSigner = this.offeringVault.connect(participant);
+    const fundsToSend = ethers.utils.parseEther(
+        (BUY_AMOUNT * LIST_PRICE).toString()
+    );
     await expectRevert(
-      this.participantSigner.bid(BUY_AMOUNT),
+      participantSigner.bid(BUY_AMOUNT),
       "Offering is not live."
     );
   });

@@ -37,8 +37,9 @@ contract FaroEnglishAuctionFactory is Ownable, Pausable {
 
     function getLiveAuctions(uint32 liveAuctionStartIndex,
         uint32 liveAuctionEndIndex) public view returns (address[] memory) {
+        require(liveAuctionEndIndex > liveAuctionStartIndex, "End index must be greater than start index");
         uint32 maxCount = liveAuctionEndIndex - liveAuctionStartIndex;
-        require(auctionCount >= maxCount);
+        require(auctionCount >= maxCount, "Number of auctions cannot be less than the number retrieved");
         bytes memory payload = abi.encodeWithSignature("auctionState()");
         address[] memory result = new address[](maxCount);
         bytes memory returnData;
