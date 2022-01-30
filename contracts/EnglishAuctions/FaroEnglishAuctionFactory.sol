@@ -59,6 +59,7 @@ contract FaroEnglishAuctionFactory is Ownable, Pausable {
         require(auctionCount >= maxCount, "Number of auctions cannot be less than the number retrieved");
         bytes memory payload = abi.encodeWithSignature("auctionState()");
         address[] memory result = new address[](maxCount);
+        uint[] memory countIndex = new uint[](maxCount);
         bytes memory returnData;
         address auction;
         bool success;
@@ -69,13 +70,14 @@ contract FaroEnglishAuctionFactory is Ownable, Pausable {
             if (success) {
                 if (uint8(returnData[31]) == 1) {
                     result[i] = auction;
+                    countIndex[count] = i;
                     count++;
                 }
             }
         }
         address[] memory filteredResult = new address[](count);
         for (uint i = 0; i < count; i++) {
-            filteredResult[i] = result[i];
+            filteredResult[i] = result[countIndex[i]];
         }
         return filteredResult;
     }
