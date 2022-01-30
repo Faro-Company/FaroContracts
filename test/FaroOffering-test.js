@@ -68,7 +68,7 @@ describe("FaroOffering", function () {
       tx = await faroOwnershipFactory.createOwnership(
         NAME,
         SYMBOL,
-        TOKEN_URI,
+        TOKEN_URI + i.toString(),
           this.user
       );
       await tx.wait();

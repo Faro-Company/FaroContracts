@@ -6,7 +6,7 @@ const NAME = "FARO Journey Starting";
 const SYMBOL = "FAROM";
 const TOKEN_URI = "HERE";
 
-describe("FaroOffering", function () {
+describe("FaroOwnershipFactory", function () {
 
     before(async function () {
         await ethers.provider.send("hardhat_reset");
@@ -19,23 +19,23 @@ describe("FaroOffering", function () {
         this.distributor = await ethers.getSigner(this.user2);
 
         const FaroOwnershipFactory = await ethers.getContractFactory("FaroOwnershipFactory");
-        const faroOwnershipFactory = await FaroOwnershipFactory.deploy();
-        await faroOwnershipFactory.deployed();
-        this.faroOwnershipFactoryAddress = this.ercVaultFactory.address;
+        this.faroOwnershipFactory = await FaroOwnershipFactory.deploy();
+        this.faroOwnershipFactory.deployed();
+        this.faroOwnershipFactoryAddress = this.faroOwnershipFactory.address;
     });
 
     it("Non owner cannot create", async function () {
-        this.faroOwnershipWithSigner = faroOwnershipFactory.connect(this.projectFundRaisingSigner);
+        const faroOwnershipWithSigner = this.faroOwnershipFactory.connect(this.projectFundRaisingSigner);
         await expectRevert(faroOwnershipWithSigner.createOwnership(
             NAME,
             SYMBOL,
             TOKEN_URI,
             this.user
-        ), "Caller is not the owner");
+        ), "Ownable: caller is not the owner");
     });
 
     it("FARO Ownership created ", async function () {
-        this.faroOwnershipWithSigner = faroOwnershipFactory.connect(this.ownerSigner);
+        const faroOwnershipWithSigner = this.faroOwnershipFactory.connect(this.ownerSigner);
         tx = await faroOwnershipWithSigner.createOwnership(
             NAME,
             SYMBOL,
@@ -44,9 +44,18 @@ describe("FaroOffering", function () {
         );
         await tx.wait();
         expect((await faroOwnershipWithSigner.getNumOfTokens()).toString()).to.equal("1");
-        ownershipAddress = await faroOwnershipFactory.getLastOwnership();
-        faroOwnership = FaroOwnership.attach(ownershipAddress);
+        ownershipAddress = await faroOwnershipWithSigner.getLastOwnership();
+        const FaroOwnership = await ethers.getContractFactory("Farownership");
+        const faroOwnership = FaroOwnership.attach(ownershipAddress);
         expect(await faroOwnership.getAgreementURI()).to.equal(TOKEN_URI);
     });
 
+    it("Cannot create another ownership with the same agreement URI", async function () {
+        const faroOwnershipWithSigner = this.faroOwnershipFactory.connect(this.ownerSigner);
+        await expectRevert(faroOwnershipWithSigner.createOwnership(
+            NAME,
+            SYMBOL,
+            TOKEN_URI,
+            this.user), "There's already an ownership with this agreement URI");
+    });
 });

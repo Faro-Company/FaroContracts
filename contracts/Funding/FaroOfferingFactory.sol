@@ -67,7 +67,6 @@ contract FaroOfferingFactory is Ownable, Pausable {
 
     function getLiveOfferings(uint32 liveOfferingStartIndex,
         uint32 liveOfferingEndIndex) public view returns (address[] memory) {
-
         require(liveOfferingEndIndex > liveOfferingStartIndex, "End index must be greater than start index");
         uint32 maxCount = liveOfferingEndIndex - liveOfferingStartIndex;
         uint32 count;

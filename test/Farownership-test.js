@@ -38,6 +38,12 @@ describe("FAROwnership", function () {
     expect(await this.farownershipToken.ownerOf(TOKEN_ID)).to.equal(this.owner);
   });
 
+  it("The owner cannot mint again", async function() {
+    this.farownershipToken.connect(this.ownerSigner);
+    await expectRevert(this.farownershipToken.mint(this.owner),
+        "Ownership already minted, cannot mint more than once");
+  })
+
   it("Non-owner cannot send it.", async function () {
     this.farownershipToken.connect(this.user);
     await expectRevert(

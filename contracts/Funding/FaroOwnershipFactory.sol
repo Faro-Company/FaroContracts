@@ -13,10 +13,16 @@ contract FaroOwnershipFactory is Ownable, Pausable {
 
     address[] public ownerships;
 
+    mapping(bytes32 => bool) public agreementUriChecks;
+
     event OwnershipCreated(address indexed token);
 
     function createOwnership(string memory _contentName, string memory _symbol, string memory _agreementUri,
         address ownerAddress) external onlyOwner whenNotPaused returns(uint256) {
+        bytes32 agreementHash = keccak256(abi.encodePacked(_agreementUri));
+        require(!agreementUriChecks[agreementHash],
+            "There's already an ownership with this agreement URI");
+        agreementUriChecks[agreementHash] = true;
         Farownership ownership = new Farownership(_contentName, _symbol, _agreementUri);
         ownership.mint(ownerAddress);
         address newOwnership = address(ownership);
