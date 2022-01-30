@@ -155,6 +155,17 @@ describe("FaroEnglishAuction", function () {
     }
   });
 
+  it("Already created auction with given token address and token ID cannot be created again", async function () {
+    const participantSigner = this.signers[0];
+    await expectRevert(participantSigner.createAuction(
+        BID_INCREMENT,
+        AUCTION_PERIOD,
+        this.ktlNFT.address,
+        0,
+        FLOOR_PRICE * 2
+    ), "There is already a non-ended auction with given token address and ID");
+  });
+
   it("Num of live auctions is 0 before start", async function () {
     expect((await this.signers[0].getLiveAuctions(0, 1)).length).to.equal(0);
   });
@@ -240,7 +251,7 @@ describe("FaroEnglishAuction", function () {
     );
   });
 
-  it("Can make bid more than floor price to another auction", async function () {
+  it("Can make bid more than floor price to another auction ", async function () {
     const firstAuction = await this.signers[0].getAuction(3);
     const FaroEnglishAuction = await ethers.getContractFactory(
       "FaroEnglishAuction"
@@ -570,6 +581,28 @@ describe("FaroEnglishAuction", function () {
     );
   });
 
+  it("Winner cannot create a new auction with the NFT before withdrawing it", async function () {
+    const participantSigner = this.faroEnglishAuctionFactory.connect(this.wallets[0]);
+    await expectRevert(participantSigner.createAuction(
+        BID_INCREMENT,
+        AUCTION_PERIOD,
+        this.ktlNFT.address,
+        PARTICIPANTS_NUM - 1,
+        FLOOR_PRICE * 2
+    ), "Auction can only be deployed by the owner of the token.");
+  });
+
+  it("Pre-owner cannot create another auction with the same NFT although the auction ended", async function () {
+    const participantSigner = this.signers[PARTICIPANTS_NUM - 1];
+    expectRevert(participantSigner.createAuction(
+        BID_INCREMENT,
+        AUCTION_PERIOD,
+        this.ktlNFT.address,
+        PARTICIPANTS_NUM - 1,
+        FLOOR_PRICE
+    ), "Auction can only be deployed by the owner of the token.");
+  });
+
   it("Winner can withdraw the NFT", async function () {
     const lastAuction = await this.signers[0].getLastAuction();
     const FaroEnglishAuction = await ethers.getContractFactory(
@@ -626,6 +659,37 @@ describe("FaroEnglishAuction", function () {
       participantSigner.withdraw(),
       "Withdrawal amount cannot be 0."
     );
+  });
+
+  it("Winner can create another auction with the same token and token ID" +
+      " if existing one is ended and he's already withdrawn the NFT", async function () {
+    let participantSigner = this.faroEnglishAuctionFactory.connect(this.wallets[0]);
+    const nftOwnerSigner = this.ktlNFT.connect(this.wallets[0]);
+    const tokenID = PARTICIPANTS_NUM - 1;
+    const approveTx = await nftOwnerSigner.approve(this.faroEnglishAuctionFactory.address, tokenID);
+    await approveTx.wait();
+    const tx = await participantSigner.createAuction(
+        BID_INCREMENT,
+        AUCTION_PERIOD,
+        this.ktlNFT.address,
+        tokenID,
+        FLOOR_PRICE * 2
+    );
+    await tx.wait();
+    auctionAddress = await participantSigner.getLastAuction();
+    const FaroEnglishAuction = await ethers.getContractFactory(
+        "FaroEnglishAuction"
+    );
+    const faroEnglishAuction = await FaroEnglishAuction.attach(
+        auctionAddress
+    );
+    participantSigner = faroEnglishAuction.connect(this.wallets[0]);
+    expect((await participantSigner.auctionState()).toString()).to.equal(
+        AUCTION_DEPLOYED_STATE
+    );
+    expect((await participantSigner.token()).toString()).to.equal(this.ktlNFT.address);
+    expect((await participantSigner.tokenId()).toString()).to.equal(tokenID.toString());
+    expect((await participantSigner.owner()).toString()).to.equal(this.wallets[0].address);
   });
 
   it("Num of live auctions is 0 after end", async function () {

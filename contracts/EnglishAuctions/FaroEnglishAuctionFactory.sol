@@ -11,19 +11,35 @@ contract FaroEnglishAuctionFactory is Ownable, Pausable {
     address[] public auctions;
     event AuctionCreated(address auctionContract, address owner);
     uint256 auctionCount;
+    mapping(bytes => address) public tokenToAuction;
 
     function createAuction(uint256 _bidIncrement, uint256 _auctionPeriodInSeconds,
         address _token, uint256 _tokenId, uint256 _floorPrice) external whenNotPaused {
+        address existingAuctionAddress = tokenToAuction[abi.encodePacked(_token, _tokenId)];
+        bool success;
+        bytes memory returnData;
+        if (existingAuctionAddress != address(0)) {
+            (success, returnData) = existingAuctionAddress.staticcall(
+                abi.encodeWithSignature("auctionState()"));
+            require(success && uint8(returnData[31]) == 2,
+                "There is already a non-ended auction with given token address and ID");
+            (success, returnData) = existingAuctionAddress.staticcall(
+                abi.encodeWithSignature("highestBidder()"));
+            require(success && abi.decode(returnData, (address)) == msg.sender,
+                "Auction can only be deployed by the owner of the token.");
+        }
         FaroEnglishAuction newAuction = new FaroEnglishAuction(msg.sender, _bidIncrement,
             _auctionPeriodInSeconds, _token, _tokenId, _floorPrice);
         address auctionAddress = address(newAuction);
-        IERC721(_token).transferFrom(msg.sender, auctionAddress, _tokenId);
+        tokenToAuction[abi.encodePacked(_token, _tokenId)] = auctionAddress;
         auctions.push(auctionAddress);
         auctionCount++;
+        IERC721(_token).transferFrom(msg.sender, auctionAddress, _tokenId);
         emit AuctionCreated(auctionAddress, msg.sender);
     }
 
     function getLastAuction() public view returns(address) {
+        require(auctionCount >= 1, "There aren't any auctions created by the factory");
         return auctions[auctionCount - 1];
     }
 
@@ -32,6 +48,7 @@ contract FaroEnglishAuctionFactory is Ownable, Pausable {
     }
 
     function getAuction(uint256 auctionIndex) public view returns(address) {
+        require(auctionIndex < auctionCount, "Index is larger than the number of auctions");
         return auctions[auctionIndex];
     }
 

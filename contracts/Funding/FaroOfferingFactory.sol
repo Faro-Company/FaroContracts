@@ -46,7 +46,6 @@ contract FaroOfferingFactory is Ownable, Pausable {
         );
 
         address offering = address(new InitializedProxy(logic, _initializationCalldata));
-        //IERC721(_token).safeTransferFrom(_projectFundingAddress, offering, ID);
         offerings.push(offering);
         offeringCount++;
         emit Mint(_token, _listPrice, offering, offeringCount);
@@ -54,6 +53,7 @@ contract FaroOfferingFactory is Ownable, Pausable {
     }
 
     function getLastOffering() public view returns (address) {
+        require(offeringCount >= 1, "There are no offerings created by the factory, yet");
         return offerings[offeringCount - 1];
     }
 
@@ -62,6 +62,7 @@ contract FaroOfferingFactory is Ownable, Pausable {
     }
 
     function getOffering(uint256 offeringNum) public view returns (address) {
+        require(offeringNum < offeringCount, " Offering index is larger than the number of offerings");
         return offerings[offeringNum];
     }
 
