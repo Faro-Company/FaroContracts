@@ -26,6 +26,7 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
 
     mapping(address => uint32) private funders;
     uint32 public remaining;
+    uint16 constant FUNDER_QUERY_LIMIT = 1000;
 
     event Start(address starter);
     event Bid(address bidder, uint256 amount);
@@ -46,6 +47,16 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
 
     function getRemainingAllocation(address funder) public view returns(uint256) {
         return funders[funder];
+    }
+
+    function getRemainingAllocationsBatch(address[] memory fundersToQuery) public view returns(uint[] memory){
+        uint numFunders = fundersToQuery.length;
+        require(numFunders <= FUNDER_QUERY_LIMIT, "Number of funders to be queried must be less than FUNDER_QUERY_LIMIT");
+        uint[] memory allocations = new uint[](numFunders);
+        for (uint i = 0; i <  numFunders; i++) {
+            allocations[i] = funders[fundersToQuery[i]];
+        }
+        return allocations;
     }
 
     function getFractionalBalance(address funder) public view returns(uint256) {
