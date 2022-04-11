@@ -1,4 +1,4 @@
-# KTLO Smart Contracts implementing Business Logic
+# FARO Smart Contracts implementing Business Logic
 
 
 For local host, testing:
