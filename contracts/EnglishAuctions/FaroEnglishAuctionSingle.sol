@@ -18,6 +18,8 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
     Start,
     Cancel,
     Bid,
+    Withdraw,
+    WithdrawNFT,
     End
   }
 
@@ -33,9 +35,12 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
     uint256 startTime;
     uint256 duration;
     uint256 floorPrice;
-    address highestBidder;
+    uint256 bidIncrement;
     uint256 highestBindingBid;
+    address highestBidder;
     AuctionState auctionState;
+    bool ownerHasWithdrawn;
+    bool highestBidderHasWithdrawn;
   }
 
   uint256 private constant maxAuctionPeriod = 365 days;
@@ -55,20 +60,22 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
     address tokenAddr,
     uint256 tokenId,
     uint256 auctDuration,
-    uint256 floorPrice
+    uint256 floorPrice,
+    uint256 bidIncrement
   ) external whenNotPaused {
+    IERC721(tokenAddr).transferFrom(msg.sender, address(this), tokenId);
     Token memory token = Token(tokenAddr, tokenId);
-    _checkIfTokenOwner(token, msg.sender);
     Auction memory newAuctionData;
+    newAuctionData.tokenOwner = msg.sender;
     newAuctionData.token = token;
     newAuctionData.duration = auctDuration;
     newAuctionData.floorPrice = floorPrice;
+    newAuctionData.bidIncrement = bidIncrement;
     _executeAction(newAuctionData, Action.Create);
   }
 
   function startAuction(address tokenAddr, uint256 tokenId) external {
     Token memory token = Token(tokenAddr, tokenId);
-    _checkIfTokenOwner(token, msg.sender);
     Auction memory data;
     data.token = token;
     _executeAction(data, Action.Start);
@@ -76,7 +83,6 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
 
   function cancelAuction(address tokenAddr, uint256 tokenId) external {
     Token memory token = Token(tokenAddr, tokenId);
-    _checkIfTokenOwner(token, msg.sender);
     Auction memory data;
     data.token = token;
     _executeAction(data, Action.Cancel);
@@ -84,11 +90,19 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
 
   function endAuction(address tokenAddr, uint256 tokenId) external {
     Token memory token = Token(tokenAddr, tokenId);
-    _checkIfTokenOwner(token, msg.sender);
     Auction memory data;
     data.token = token;
     _executeAction(data, Action.End);
   }
+
+  function bid(address tokenAddr, uint256 tokenId) external payable {
+    Token memory token = Token(tokenAddr, tokenId);
+    Auction memory data;
+    data.token = token;
+    _executeAction(data, Action.Bid);
+  }
+
+  function withdraw() external {}
 
   function _executeAction(Auction memory _inputData, Action _action) internal {
     Token memory token = _inputData.token;
@@ -111,12 +125,11 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
 
     if (_action == Action.Create) {
       if (existsAuctionForToken) {
-        bool createEligible = auctState == AuctionState.AuctionEnded || auctState == AuctionState.AuctionCancelled;
+        bool createEligible = (auctState == AuctionState.AuctionEnded || auctState == AuctionState.AuctionCancelled);
         require(createEligible, "A live or in created-state auction exists for this token");
       }
       require(_inputData.duration < maxAuctionPeriod, "Auction duration too long");
       _inputData.auctionId = auctionCount;
-      _inputData.tokenOwner = msg.sender;
       allAuctions.push(_inputData);
       tokenAuctIndices.push(_inputData.auctionId);
       auctionCount++;
@@ -132,6 +145,7 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
       }
     } else if (_action == Action.Cancel) {
       if (existsAuctionForToken) {
+        _checkIfTokenOwner(lastTokenAuct, msg.sender);
         require(auctState == AuctionState.AuctionStarted, "Auction is not live");
         lastTokenAuct.auctionState = AuctionState.AuctionCancelled;
         // emit event
@@ -141,16 +155,77 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
     } else if (_action == Action.End) {
       // auction ending is already perfomed above
       if (existsAuctionForToken) {
+        _checkIfTokenOwner(lastTokenAuct, msg.sender);
         require(auctState == AuctionState.AuctionEnded, "Auction cannot be ended");
       } else {
         revert("No auction to end for this token");
+      }
+    } else if (_action == Action.Bid) {
+      if (existsAuctionForToken) {
+        _checkIfNotTokenOwner(lastTokenAuct, msg.sender);
+        require(auctState == AuctionState.AuctionStarted, "Auction is not live");
+        _bid(lastTokenAuct);
+        // emit event
+      } else {
+        revert("No auction to bid for this token");
+      }
+    } else if (_action == Action.Withdraw) {
+      if (existsAuctionForToken) {
+        bool withdrawEligible = (auctState == AuctionState.AuctionEnded || auctState == AuctionState.AuctionCancelled);
+        require(withdrawEligible, "Auction is still live or in created-state");
+        _withdraw(lastTokenAuct);
+      } else {
+        revert("No auction to withdraw from");
       }
     }
   }
 
   // Internal Functions
 
-  function _bid(Auction storage _auction) internal {}
+  function _bid(Auction storage _auction) internal {
+    require(msg.value > _auction.floorPrice, "Cannot send bid less than floor price.");
+    mapping(address => uint256) storage bids = auctIdToBids[_auction.auctionId];
+    uint256 newBid = bids[msg.sender] + msg.value;
+    require(newBid > _auction.highestBindingBid, "Bid amount is less than highest");
+    address currHighestBidder = _auction.highestBidder;
+    uint256 highestBid = bids[currHighestBidder];
+    uint256 bidIncrement = _auction.bidIncrement;
+    if (newBid <= highestBid) {
+      _auction.highestBindingBid = _min(newBid + bidIncrement, highestBid);
+    } else {
+      if (msg.sender != currHighestBidder) {
+        _auction.highestBidder = msg.sender;
+        _auction.highestBindingBid = _min(newBid, highestBid + bidIncrement);
+      }
+      highestBid = newBid;
+    }
+    // emit event
+    //emit Bid(msg.sender, newBid, highestBidder, highestBid, highestBindingBid);
+  }
+
+  function _withdraw(Auction storage _auction) internal {
+    mapping(address => uint256) storage bids = auctIdToBids[_auction.auctionId];
+    address highestBidder = _auction.highestBidder;
+    uint256 highestBindingBid = _auction.highestBindingBid;
+    address withdrawalAccount = msg.sender; // initial value
+    uint256 withdrawalAmount = bids[withdrawalAccount]; // initial value
+
+    if (_auction.auctionState == AuctionState.AuctionEnded) {
+      if (msg.sender == _auction.tokenOwner && !_auction.ownerHasWithdrawn) {
+        withdrawalAccount = highestBidder;
+        withdrawalAmount = highestBindingBid;
+        _auction.ownerHasWithdrawn = true;
+      } else if (msg.sender == highestBidder && !_auction.highestBidderHasWithdrawn) {
+        withdrawalAccount = _auction.highestBidder;
+        withdrawalAmount = bids[highestBidder] - highestBindingBid;
+        _auction.highestBidderHasWithdrawn = true;
+      }
+    }
+    require(withdrawalAmount > 0, "No funds to withdraw");
+    bids[withdrawalAccount] -= withdrawalAmount;
+    require(payable(withdrawalAccount).send(withdrawalAmount), "Transfer amount not successful");
+    // emit event
+  }
 
   function _getTokenAuctData(Token memory _token)
     internal
@@ -172,17 +247,18 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
     return keccak256(abi.encodePacked(_token.tokenAddr, _token.tokenId));
   }
 
-  function _checkIfTokenOwner(Token memory token, address caller) internal {
-    require(IERC721(token.tokenAddr).ownerOf(token.tokenId) == caller, "Caller is not token owner");
+  function _checkIfTokenOwner(Auction storage _auction, address caller) internal view {
+    require(_auction.tokenOwner == caller, "Caller is not token owner");
   }
 
-  function _checkIfNotTokenOwner(Token memory token, address caller) internal {
-    require(IERC721(token.tokenAddr).ownerOf(token.tokenId) != caller, "Caller not token owner");
+  function _checkIfNotTokenOwner(Auction storage _auction, address caller) internal view {
+    require(_auction.tokenOwner != caller, "Caller is token owner");
   }
 
-  // function _end(Token memory token) internal view {
-  //     bytes32 tokenHash = _calcTokenHash(token);
-  // }
+  function _min(uint256 a, uint256 b) internal pure returns (uint256) {
+    if (a < b) return a;
+    return b;
+  }
 }
 
 contract FaroEnglishAuctionDel {
