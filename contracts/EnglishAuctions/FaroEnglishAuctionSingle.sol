@@ -2,10 +2,11 @@
 pragma solidity ^0.8.0;
 
 import "@openzeppelin/contracts/token/ERC721/IERC721.sol";
+import "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/access/Ownable.sol";
 
-contract FaroEnglishAuctionSingle is Ownable, Pausable {
+contract FaroEnglishAuctionSingle is Ownable, Pausable, IERC721Receiver {
   enum AuctionState {
     AuctionCreated,
     AuctionStarted,
@@ -40,7 +41,7 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
     address highestBidder;
     AuctionState auctionState;
     bool ownerHasWithdrawn;
-    bool highestBidderHasWithdrawn;
+    bool tokenWithdrawn;
   }
 
   uint256 private constant maxAuctionPeriod = 365 days;
@@ -51,10 +52,9 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
 
   Auction private dummyAuction; // for initial storage pointing
 
-  constructor() {
-    // fill in later
-    // !!!!!!!!!!!!!!!!!!!!!!!EVENTS!!!!!!!!!!!!!!!!
-  }
+  // EVENTS are to be implemented...
+
+  constructor() {}
 
   function createAuction(
     address tokenAddr,
@@ -63,7 +63,7 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
     uint256 floorPrice,
     uint256 bidIncrement
   ) external whenNotPaused {
-    IERC721(tokenAddr).transferFrom(msg.sender, address(this), tokenId);
+    IERC721(tokenAddr).safeTransferFrom(msg.sender, address(this), tokenId);
     Token memory token = Token(tokenAddr, tokenId);
     Auction memory newAuctionData;
     newAuctionData.tokenOwner = msg.sender;
@@ -102,7 +102,60 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
     _executeAction(data, Action.Bid);
   }
 
-  function withdraw() external {}
+  function withdraw(address tokenAddr, uint256 tokenId) external {
+    Token memory token = Token(tokenAddr, tokenId);
+    Auction memory data;
+    data.token = token;
+    _executeAction(data, Action.Withdraw);
+  }
+
+  function withdrawNFT(address tokenAddr, uint256 tokenId) external {
+    Token memory token = Token(tokenAddr, tokenId);
+    Auction memory data;
+    data.token = token;
+    _executeAction(data, Action.WithdrawNFT);
+  }
+
+  function pause() external onlyOwner {
+    _pause();
+  }
+
+  function unpause() external onlyOwner {
+    _unpause();
+  }
+
+  // View functions
+  function getTotalAuctionCount() external view returns (uint256) {
+    return auctionCount;
+  }
+
+  function getAuctionbyIndex(uint256 index) external view returns (Auction memory) {
+    return allAuctions[index]; //reverts if out-of-bound
+  }
+
+  function getAuctionCountbyToken(address tokenAddr, uint256 tokenId) external view returns (uint256) {
+    Token memory token = Token(tokenAddr, tokenId);
+    (uint256 lenTokenAucts, , ) = _getTokenAuctData(token);
+    return lenTokenAucts;
+  }
+
+  function getIndexFromTokenAuctions(
+    address tokenAddr,
+    uint256 tokenId,
+    uint256 index
+  ) external view returns (uint256) {
+    Token memory token = Token(tokenAddr, tokenId);
+    (, , uint256[] storage tokenAuctIndices) = _getTokenAuctData(token);
+    return tokenAuctIndices[index]; //reverts if out-of-bound
+  }
+
+  function getLastAuctionByToken(address tokenAddr, uint256 tokenId) external view returns (Auction memory) {
+    Token memory token = Token(tokenAddr, tokenId);
+    (, uint256 indexLastTokenAuct, uint256[] storage tokenAuctIndices) = _getTokenAuctData(token);
+    return allAuctions[tokenAuctIndices[indexLastTokenAuct]];
+  }
+
+  // Internal Functions
 
   function _executeAction(Auction memory _inputData, Action _action) internal {
     Token memory token = _inputData.token;
@@ -136,6 +189,7 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
       // emit event
     } else if (_action == Action.Start) {
       if (existsAuctionForToken) {
+        _checkIfTokenOwner(lastTokenAuct, msg.sender);
         require(auctState == AuctionState.AuctionCreated, "Auction is not in created-state");
         lastTokenAuct.startTime = block.timestamp;
         lastTokenAuct.auctionState = AuctionState.AuctionStarted;
@@ -155,7 +209,6 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
     } else if (_action == Action.End) {
       // auction ending is already perfomed above
       if (existsAuctionForToken) {
-        _checkIfTokenOwner(lastTokenAuct, msg.sender);
         require(auctState == AuctionState.AuctionEnded, "Auction cannot be ended");
       } else {
         revert("No auction to end for this token");
@@ -177,10 +230,34 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
       } else {
         revert("No auction to withdraw from");
       }
+    } else if (_action == Action.WithdrawNFT) {
+      if (existsAuctionForToken) {
+        bool withdrawNFTEligible = (auctState == AuctionState.AuctionEnded || auctState == AuctionState.AuctionCancelled);
+        require(withdrawNFTEligible, "Auction is still live or in created-state");
+        _withdrawNFT(lastTokenAuct);
+      } else {
+        revert("No auction to withdraw NFT from");
+      }
     }
   }
 
-  // Internal Functions
+  function _withdrawNFT(Auction storage _auction) internal {
+    require(!_auction.tokenWithdrawn, "NFT already withdrawn");
+    address recipient = address(0);
+    address highestBidder = _auction.highestBidder;
+    address tokenOwner = _auction.tokenOwner;
+    AuctionState auctState = _auction.auctionState;
+    if (
+      (auctState == AuctionState.AuctionEnded && msg.sender == highestBidder) ||
+      (auctState == AuctionState.AuctionEnded && highestBidder == address(0) && msg.sender == tokenOwner) ||
+      (auctState == AuctionState.AuctionCancelled && msg.sender == tokenOwner)
+    ) {
+      recipient = msg.sender;
+    }
+    require(recipient != address(0), "cannot transfer NFT");
+    IERC721(_auction.token.tokenAddr).safeTransferFrom(address(this), recipient, _auction.token.tokenId);
+    _auction.tokenWithdrawn = true;
+  }
 
   function _bid(Auction storage _auction) internal {
     require(msg.value > _auction.floorPrice, "Cannot send bid less than floor price.");
@@ -215,15 +292,14 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
         withdrawalAccount = highestBidder;
         withdrawalAmount = highestBindingBid;
         _auction.ownerHasWithdrawn = true;
-      } else if (msg.sender == highestBidder && !_auction.highestBidderHasWithdrawn) {
+      } else if (msg.sender == highestBidder) {
         withdrawalAccount = _auction.highestBidder;
         withdrawalAmount = bids[highestBidder] - highestBindingBid;
-        _auction.highestBidderHasWithdrawn = true;
       }
     }
     require(withdrawalAmount > 0, "No funds to withdraw");
     bids[withdrawalAccount] -= withdrawalAmount;
-    require(payable(withdrawalAccount).send(withdrawalAmount), "Transfer amount not successful");
+    require(payable(msg.sender).send(withdrawalAmount), "Transfer amount not successful");
     // emit event
   }
 
@@ -259,194 +335,18 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable {
     if (a < b) return a;
     return b;
   }
-}
 
-contract FaroEnglishAuctionDel {
-  uint256 constant maxAuctionPeriod = 31536000;
-
-  address public owner;
-  uint256 public bidIncrement;
-  uint256 public endTime;
-  uint256 public startTime;
-  uint256 auctionPeriodInSeconds;
-  uint256 public floorPrice;
-
-  IERC721 public token;
-  uint256 public tokenId;
-
-  uint256 public highestBindingBid;
-  address public highestBidder;
-  mapping(address => uint256) public bids;
-
-  bool ownerHasWithdrawn;
-  AuctionState public auctionState;
-
-  event Bid(address bidder, uint256 bid, address highestBidder, uint256 highestBid, uint256 highestBindingBid);
-  event Withdrawal(address withdrawer, address withdrawalAccount, uint256 amount);
-  event Cancelled();
-  event End(address _highestBidder, uint256 _highestBid);
-
-  enum AuctionState {
-    AuctionDeployed,
-    AuctionStarted,
-    AuctionEnded,
-    AuctionCancelled
-  }
-
-  modifier onlyOwner() {
-    if (msg.sender != owner) revert("Only owner can perform this operation.");
-    _;
-  }
-
-  modifier onlyNotOwner() {
-    require(msg.sender != owner, "Owner cannot perform this operation.");
-    _;
-  }
-
-  modifier onlyDeployed() {
-    require(auctionState == AuctionState.AuctionDeployed, "Auction's already started.");
-    _;
-  }
-
-  modifier onlyLive() {
-    _end();
-    require(auctionState == AuctionState.AuctionStarted, "Auction is not live.");
-    _;
-  }
-
-  modifier notCancelled() {
-    require(auctionState != AuctionState.AuctionCancelled, "Auction is not cancelled");
-    _;
-  }
-
-  modifier cancelled() {
-    require(auctionState == AuctionState.AuctionCancelled, "Auction is cancelled.");
-    _;
-  }
-
-  modifier onlyEnded() {
-    _end();
-    require(auctionState == AuctionState.AuctionEnded, "Auction must be ended for this operation.");
-    _;
-  }
-
-  modifier endedOrCancelled() {
-    _end();
-    require(
-      auctionState == AuctionState.AuctionCancelled || auctionState == AuctionState.AuctionEnded,
-      "Auction did not end or was cancelled."
-    );
-    _;
-  }
-
-  constructor(
-    address _owner,
-    uint256 _bidIncrement,
-    uint256 _auctionPeriodInSeconds,
-    address _token,
-    uint256 _tokenId,
-    uint256 _floorPrice
-  ) {
-    require(IERC721(_token).ownerOf(_tokenId) == _owner, "Auction can only be deployed by the owner of the token.");
-    require(auctionPeriodInSeconds < maxAuctionPeriod, "Auction period cannot be more than 1 year");
-    owner = _owner;
-    bidIncrement = _bidIncrement;
-    auctionPeriodInSeconds = _auctionPeriodInSeconds;
-    token = IERC721(_token);
-    tokenId = _tokenId;
-    auctionState = AuctionState.AuctionDeployed;
-    floorPrice = _floorPrice * 1 ether;
-  }
-
-  function getHighestBid() public view returns (uint256) {
-    return bids[highestBidder];
-  }
-
-  function getBidForAnAddress(address bidder) public view returns (uint256) {
-    return bids[bidder];
-  }
-
-  function end() public {
-    _end();
-  }
-
-  function start() public onlyOwner onlyDeployed {
-    auctionState = AuctionState.AuctionStarted;
-    startTime = block.timestamp;
-    endTime = startTime + auctionPeriodInSeconds * 1 seconds;
-  }
-
-  function bid() public payable onlyLive onlyNotOwner returns (bool success) {
-    require(msg.value > floorPrice, "Cannot send bid less than floor price.");
-    uint256 newBid = bids[msg.sender] + msg.value;
-    require(newBid > highestBindingBid, "Bid amount is less than highest");
-    uint256 highestBid = bids[highestBidder];
-    bids[msg.sender] = newBid;
-
-    if (newBid <= highestBid) {
-      highestBindingBid = min(newBid + bidIncrement, highestBid);
-    } else {
-      if (msg.sender != highestBidder) {
-        highestBidder = msg.sender;
-        highestBindingBid = min(newBid, highestBid + bidIncrement);
-      }
-      highestBid = newBid;
-    }
-
-    emit Bid(msg.sender, newBid, highestBidder, highestBid, highestBindingBid);
-    return true;
-  }
-
-  function min(uint256 a, uint256 b) private pure returns (uint256) {
-    if (a < b) return a;
-    return b;
-  }
-
-  function cancelAuction() public onlyOwner onlyLive returns (bool success) {
-    auctionState = AuctionState.AuctionCancelled;
-    emit Cancelled();
-    return true;
-  }
-
-  function _end() internal {
-    if (block.timestamp > endTime && auctionState == AuctionState.AuctionStarted) {
-      auctionState = AuctionState.AuctionEnded;
-      emit End(highestBidder, bids[highestBidder]);
-    }
-  }
-
-  function withdrawNFT() external onlyEnded {
-    require(msg.sender == highestBidder, "Only the highest bidder can withdraw the auction item.");
-    token.transferFrom(address(this), msg.sender, tokenId);
-  }
-
-  function withdrawNFTWhenCancelled() external onlyOwner cancelled {
-    token.transferFrom(address(this), msg.sender, tokenId);
-  }
-
-  function withdraw() external endedOrCancelled {
-    address withdrawalAccount;
-    uint256 withdrawalAmount;
-    require(bids[msg.sender] > 0, "Sender has no bids to withdraw.");
-    if (auctionState == AuctionState.AuctionCancelled) {
-      withdrawalAccount = msg.sender;
-      withdrawalAmount = bids[withdrawalAccount];
-    } else {
-      if (msg.sender == owner) {
-        withdrawalAccount = highestBidder;
-        withdrawalAmount = highestBindingBid;
-        ownerHasWithdrawn = true;
-      } else if (msg.sender == highestBidder) {
-        withdrawalAccount = highestBidder;
-        withdrawalAmount = bids[highestBidder] - highestBindingBid;
-      } else {
-        withdrawalAccount = msg.sender;
-        withdrawalAmount = bids[withdrawalAccount];
-      }
-    }
-    require(withdrawalAmount > 0, "Withdrawal amount cannot be 0.");
-    bids[withdrawalAccount] -= withdrawalAmount;
-    require(payable(withdrawalAccount).send(withdrawalAmount), "Transfer amount not successful");
-    emit Withdrawal(msg.sender, withdrawalAccount, withdrawalAmount);
+  // ERC721 Receiver Interface
+  function onERC721Received(
+    address operator,
+    address from,
+    uint256 tokenId,
+    bytes calldata data
+  ) external virtual override returns (bytes4) {
+    operator;
+    from;
+    tokenId;
+    data;
+    return IERC721Receiver.onERC721Received.selector;
   }
 }
