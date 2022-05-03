@@ -5,13 +5,20 @@ import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {FaroEnglishAuction} from './FaroEnglishAuction.sol';
+import {FaroNFTFactory} from '../FaroNFTs/FaroNFTFactory.sol';
+
 
 contract FaroEnglishAuctionFactory is Ownable, Pausable {
 
     address[] public auctions;
     event AuctionCreated(address auctionContract, address owner);
     uint256 auctionCount;
+    FaroNFTFactory faroNFTFactory;
     mapping(bytes => address) public tokenToAuction;
+
+    constructor(address _faroNFTFactory) {
+        faroNFTFactory = FaroNFTFactory(_faroNFTFactory);
+    }
 
     function createAuction(uint256 _bidIncrement, uint256 _auctionPeriodInSeconds,
         address _token, uint256 _tokenId, uint256 _floorPrice) external whenNotPaused {
@@ -28,6 +35,7 @@ contract FaroEnglishAuctionFactory is Ownable, Pausable {
             require(success && abi.decode(returnData, (address)) == msg.sender,
                 "Auction can only be deployed by the owner of the token.");
         }
+        require(faroNFTFactory.getNFTByAddress(_token) != address(0), "There is no such Faro NFT with this address");
         FaroEnglishAuction newAuction = new FaroEnglishAuction(msg.sender, _bidIncrement,
             _auctionPeriodInSeconds, _token, _tokenId, _floorPrice);
         address auctionAddress = address(newAuction);
