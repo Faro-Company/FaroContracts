@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity 0.8.4;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
@@ -36,6 +36,10 @@ contract FaroEnglishAuctionFactory is Ownable, Pausable {
         auctionCount++;
         IERC721(_token).transferFrom(msg.sender, auctionAddress, _tokenId);
         emit AuctionCreated(auctionAddress, msg.sender);
+    }
+
+    function getAuctionFromToken(address _token, uint _tokenId) public view returns(address) {
+        return tokenToAuction[abi.encodePacked(_token, _tokenId)];
     }
 
     function getLastAuction() public view returns(address) {

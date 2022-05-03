@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity 0.8.4;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
@@ -187,6 +187,10 @@ contract FaroEnglishAuction {
         bids[withdrawalAccount] -= withdrawalAmount;
         require(payable(withdrawalAccount).send(withdrawalAmount), "Transfer amount not successful");
         emit Withdrawal(msg.sender, withdrawalAccount, withdrawalAmount);
+    }
+
+    function isAuctionEnded() public view returns (bool) {
+        return auctionState == AuctionState.AuctionEnded;
     }
 }
 

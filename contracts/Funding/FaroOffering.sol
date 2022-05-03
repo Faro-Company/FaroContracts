@@ -1,5 +1,5 @@
 //SPDX-License-Identifier: MIT
-pragma solidity ^0.8.0;
+pragma solidity 0.8.4;
 
 import "@openzeppelin/contracts-upgradeable/security/PausableUpgradeable.sol";
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
@@ -54,6 +54,10 @@ contract FaroOffering is ERC721HolderUpgradeable, PausableUpgradeable {
 
     function getFractionalAddress() public view returns (address) {
         return address(fractional);
+    }
+
+    function getRemaining() public view returns(uint256) {
+        return remaining;
     }
 
     function initialize(address _token, address payable _projectFundingAddress, address _owner,

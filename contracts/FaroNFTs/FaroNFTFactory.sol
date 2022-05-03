@@ -1,6 +1,6 @@
 //SPDX-License-Identifier: MIT
 
-pragma solidity ^0.8.0;
+pragma solidity 0.8.4;
 
 import "@openzeppelin/contracts/access/Ownable.sol";
 import "@openzeppelin/contracts/security/Pausable.sol";
@@ -12,6 +12,7 @@ contract FaroNFTFactory is Ownable, Pausable {
     uint256 private nftCount;
 
     address[] public nfts;
+    mapping(address => uint) public nftRegistry;
 
     event NFTCreated(address indexed token);
 
@@ -24,6 +25,7 @@ contract FaroNFTFactory is Ownable, Pausable {
         address nftAddress = address(nft);
         nfts.push(nftAddress);
         nftCount++;
+        nftRegistry[nftAddress] = nftCount;
         emit NFTCreated(nftAddress);
         return nftCount;
     }
@@ -38,6 +40,10 @@ contract FaroNFTFactory is Ownable, Pausable {
 
     function getNFT(uint256 nftNum) public view returns (address) {
         return nfts[nftNum];
+    }
+
+    function getNFTByAddress(address nftAddress) public view returns (uint) {
+        return nftRegistry[nftAddress];
     }
 
     function pause() external onlyOwner {
