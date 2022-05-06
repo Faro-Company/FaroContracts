@@ -1,8 +1,9 @@
+const address = require("ethers-utils/address");
 const { hre } = require("hardhat");
 const { ethers } = require("hardhat");
 
 const main = async () => {
-  const signer = await ethers.getSigner();
+  const accounts = await ethers.getSigners();
 
   const EngAuctSingle = await ethers.getContractFactory("FaroEnglishAuctionSingle");
   const EngAuctFactory = await ethers.getContractFactory("FaroEnglishAuctionFactory");
@@ -22,8 +23,8 @@ const main = async () => {
   // mint some NFTs
   const FaroNFT = await ethers.getContractFactory("FaroNFT");
   const faroNFT = await FaroNFT.deploy("xxx", "xxx", "xxx", 1);
-  await faroNFT.mint(signer.address, 1);
-  await faroNFT.mint(signer.address, 2);
+  await faroNFT.mint(accounts[0].address, 1);
+  await faroNFT.mint(accounts[0].address, 2);
   await faroNFT.approve(single.address, 1);
   await faroNFT.approve(factory.address, 2);
 
@@ -31,13 +32,32 @@ const main = async () => {
   let tx;
   let txReceipt;
 
-  tx = await single.createAuction(faroNFT.address, 1, 100, 100, 100);
+  tx = await single.createAuction(faroNFT.address, 1, 100000, 100, 100);
   txReceipt = await tx.wait();
   console.log(`Gas used for creating Auction with Eng. Auction Single: ${nf.format(txReceipt.gasUsed.toNumber())}`);
 
-  tx = await factory.createAuction(100, 100, faroNFT.address, 2, 100);
+  tx = await factory.createAuction(100, 100000, faroNFT.address, 2, 100);
   txReceipt = await tx.wait();
-  console.log(`Gas used for creating Auction with Eng. Auction Factory: ${nf.format(txReceipt.gasUsed.toNumber())}`);
+  console.log(`Gas used for creating Auction with Eng. Auction Factory: ${nf.format(txReceipt.gasUsed.toNumber())}\n`);
+
+  const addrAuctionFromFact = await factory.getLastAuction();
+  const auctionFromFactory = await ethers.getContractAt("FaroEnglishAuction", addrAuctionFromFact);
+
+  tx = await single.startAuction(faroNFT.address, 1);
+  txReceipt = await tx.wait();
+  console.log(`Gas used for starting Auction with Eng. Auction Single: ${nf.format(txReceipt.gasUsed.toNumber())}`);
+
+  tx = await auctionFromFactory.start();
+  txReceipt = await tx.wait();
+  console.log(`Gas used for starting Auction with Eng. Auction Factory: ${nf.format(txReceipt.gasUsed.toNumber())}\n`);
+
+  tx = await single.attach(accounts[1].address).bid(faroNFT.address, 2, { value: 200 });
+  txReceipt = await tx.wait();
+  console.log(`Gas used for bidding in Auction with Eng. Auction Single: ${nf.format(txReceipt.gasUsed.toNumber())}`);
+
+  tx = await auctionFromFactory.attach(accounts[1].address).bid({ value: 200 });
+  txReceipt = await tx.wait();
+  console.log(`Gas used for bidding in Auction with Eng. Auction Factory: ${nf.format(txReceipt.gasUsed.toNumber())}\n`);
 };
 
 main().then();
