@@ -37,11 +37,9 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable, IERC721Receiver {
     uint256 duration;
     uint256 floorPrice;
     uint256 bidIncrement;
-    uint256 highestBindingBid;
+    uint256 highestBid;
     address highestBidder;
     AuctionState auctionState;
-    bool ownerHasWithdrawn;
-    bool tokenWithdrawn;
   }
 
   uint256 private constant MAX_AUCTION_PERIOD = 365 days;
@@ -58,7 +56,7 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable, IERC721Receiver {
   event Started(uint256 indexed auctionId);
   event Cancelled(uint256 indexed auctionId);
   event Ended(uint256 indexed auctionId);
-  event BidPlaced(uint256 indexed auctionId, uint256 highestBindingBid);
+  event BidPlaced(uint256 indexed auctionId, uint256 highestBid);
 
   constructor() {}
 
@@ -230,7 +228,6 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable, IERC721Receiver {
   }
 
   function _withdrawNFT(Auction storage _auction) internal {
-    require(!_auction.tokenWithdrawn, "NFT already withdrawn");
     address recipient = address(0);
     address highestBidder = _auction.highestBidder;
     address tokenOwner = _auction.tokenOwner;
@@ -244,7 +241,6 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable, IERC721Receiver {
     }
     require(recipient != address(0), "cannot transfer NFT");
     IERC721(_auction.token.tokenAddr).safeTransferFrom(address(this), recipient, _auction.token.tokenId);
-    _auction.tokenWithdrawn = true;
   }
 
   function _bid(Auction storage _auction) internal {
@@ -252,43 +248,29 @@ contract FaroEnglishAuctionSingle is Ownable, Pausable, IERC721Receiver {
     mapping(address => uint256) storage bids = auctIdToBids[_auction.auctionId];
     uint256 newBid = bids[msg.sender] + msg.value;
     require(newBid > floorPrice, "Cannot send bid less than floor price");
-    require(newBid > _auction.highestBindingBid, "Bid amount is less than highest");
+    require(newBid >= _auction.highestBid + _auction.bidIncrement, "minimum bid = highest + increment");
     bids[msg.sender] = newBid;
-    address currHighestBidder = _auction.highestBidder;
-    uint256 bidIncrement = _auction.bidIncrement;
-    uint256 highestBid = currHighestBidder == address(0) ? floorPrice : bids[currHighestBidder];
-    if (newBid <= highestBid) {
-      _auction.highestBindingBid = _min(newBid + bidIncrement, highestBid);
-    } else {
-      if (msg.sender != currHighestBidder) {
-        _auction.highestBidder = msg.sender;
-        _auction.highestBindingBid = _min(newBid, highestBid + bidIncrement);
-      }
-      highestBid = newBid;
-    }
-    emit BidPlaced(_auction.auctionId, _auction.highestBindingBid);
+    _auction.highestBidder = msg.sender;
+    _auction.highestBid = newBid;
+    emit BidPlaced(_auction.auctionId, newBid);
   }
 
   function _withdraw(Auction storage _auction) internal {
     mapping(address => uint256) storage bids = auctIdToBids[_auction.auctionId];
     address highestBidder = _auction.highestBidder;
-    uint256 highestBindingBid = _auction.highestBindingBid;
     address withdrawalAccount = msg.sender; // initial value
-    uint256 withdrawalAmount = bids[withdrawalAccount]; // initial value
 
     if (_auction.auctionState == AuctionState.AuctionEnded) {
-      if (msg.sender == _auction.tokenOwner && !_auction.ownerHasWithdrawn) {
+      if (msg.sender == _auction.tokenOwner) {
         withdrawalAccount = highestBidder;
-        withdrawalAmount = highestBindingBid;
-        _auction.ownerHasWithdrawn = true;
       } else if (msg.sender == highestBidder) {
-        withdrawalAccount = _auction.highestBidder;
-        withdrawalAmount = bids[highestBidder] - highestBindingBid;
+        revert("Withdrawal not allowed for highest bidder");
       }
     }
+    uint256 withdrawalAmount = bids[withdrawalAccount];
     require(withdrawalAmount > 0, "No funds to withdraw");
     bids[withdrawalAccount] -= withdrawalAmount;
-    require(payable(msg.sender).send(withdrawalAmount), "Transfer amount not successful");
+    require(payable(msg.sender).send(withdrawalAmount), "Fund transfer not successful");
   }
 
   function _getTokenAuctData(Token memory _token)

@@ -13,9 +13,9 @@ const TOKEN_URI = "HERE";
 const CONTENT_ID = 123456;
 const FLOOR_PRICE = ethers.utils.parseEther("1");
 const BID_INCREMENT = ethers.utils.parseEther("0.1");
+const LESS_BID_INCREMENT = ethers.utils.parseEther("0.09");
 const INSUFFICIENT_BID_PRICE = ethers.utils.parseEther("0.8");
 const BID_PRICE_MORE_THAN_FLOOR = ethers.utils.parseEther("1.2");
-const BID_PRICE_LOWER_THAN_HIGH = ethers.utils.parseEther("1.8");
 const BID_PRICE_HIGH = ethers.utils.parseEther("2");
 const BID_PRICE_HIGHER = ethers.utils.parseEther("4");
 const ONE_DAY_IN_SEC = 86400; // 1 day -> 86400 seconds
@@ -256,8 +256,6 @@ describe("FARO English Auction Single", function () {
     const tx = await faroEngAuctSingleTemp.withdrawNFT(faroNFTAddress, tokenIdTemp);
     await tx.wait();
     expect(await faroNFT.ownerOf(tokenIdTemp)).to.be.equal(signerTemp.address);
-    const auction = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
-    expect(auction.tokenWithdrawn).to.be.equal(true);
   });
 
   it("Owner can create and start new auction for same token after cancellation", async function () {
@@ -281,36 +279,45 @@ describe("FARO English Auction Single", function () {
     expect(auction.auctionState).to.be.eq(AuctionState.started);
   });
 
-  it("Cannot change highest bidder by offering a lower bid", async function () {
+  it("Reverts when bid not minimum highest+increment", async function () {
     tokenIdTemp = 2;
     signerTemp = nonTokenOwners[1];
     faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
-    const auctionBefore = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
-    const tx = await faroEngAuctSingleTemp.bid(faroNFTAddress, tokenIdTemp, { value: BID_PRICE_LOWER_THAN_HIGH });
-    await tx.wait();
-    const userBid = await faroEngAuctSingle.getBidOfAddressByAuctionId(auctionBefore.auctionId, signerTemp.address);
-    expect(userBid).to.be.eq(BID_PRICE_LOWER_THAN_HIGH);
-    const auctionAfter = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
-    expect(auctionBefore.highestBidder).to.equal(auctionAfter.highestBidder);
-    expect(auctionAfter.highestBindingBid).to.be.gt(auctionBefore.highestBindingBid);
+    await expect(
+      faroEngAuctSingleTemp.bid(faroNFTAddress, tokenIdTemp, { value: BID_PRICE_HIGH.add(LESS_BID_INCREMENT) })
+    ).to.be.revertedWith("minimum bid = highest + increment");
   });
 
-  it("Can change bids by putting more amount to existing again", async function () {
+  it("Can overbid existing highest bidder", async function () {
     tokenIdTemp = 2;
     signerTemp = nonTokenOwners[1];
     faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
     const auctionBefore = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
-    const tx = await faroEngAuctSingleTemp.bid(faroNFTAddress, tokenIdTemp, { value: BID_PRICE_HIGH });
+    const tx = await faroEngAuctSingleTemp.bid(faroNFTAddress, tokenIdTemp, { value: BID_PRICE_HIGH.add(BID_INCREMENT) });
     await tx.wait();
     const userBid = await faroEngAuctSingle.getBidOfAddressByAuctionId(auctionBefore.auctionId, signerTemp.address);
-    expect(userBid).to.be.eq(BID_PRICE_HIGH.add(BID_PRICE_LOWER_THAN_HIGH));
+    expect(userBid).to.be.eq(BID_PRICE_HIGH.add(BID_INCREMENT));
     const auctionAfter = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
     expect(auctionBefore.highestBidder).to.not.equal(auctionAfter.highestBidder);
     expect(auctionAfter.highestBidder).to.equal(signerTemp.address);
-    expect(auctionAfter.highestBindingBid).to.be.gt(auctionBefore.highestBindingBid);
+    expect(auctionAfter.highestBid).to.be.gt(auctionBefore.highestBid);
   });
 
-  it("Can change highest bid by putting more amount", async function () {
+  it("Highest bidder can overbid himself", async function () {
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[1];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    const auctionBefore = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
+    const tx = await faroEngAuctSingleTemp.bid(faroNFTAddress, tokenIdTemp, { value: BID_INCREMENT.mul(2) });
+    await tx.wait();
+    const userBid = await faroEngAuctSingle.getBidOfAddressByAuctionId(auctionBefore.auctionId, signerTemp.address);
+    expect(userBid).to.be.eq(BID_PRICE_HIGH.add(BID_INCREMENT.mul(3)));
+    const auctionAfter = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
+    expect(auctionAfter.highestBidder).to.equal(signerTemp.address);
+    expect(auctionAfter.highestBid).to.be.gt(auctionBefore.highestBid);
+  });
+
+  it("Another account can overbid again", async function () {
     tokenIdTemp = 2;
     signerTemp = nonTokenOwners[2];
     faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
@@ -322,7 +329,7 @@ describe("FARO English Auction Single", function () {
     const auctionAfter = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
     expect(auctionBefore.highestBidder).to.not.equal(auctionAfter.highestBidder);
     expect(auctionAfter.highestBidder).to.equal(signerTemp.address);
-    expect(auctionAfter.highestBindingBid).to.be.gt(auctionBefore.highestBindingBid);
+    expect(auctionAfter.highestBid).to.be.gt(auctionBefore.highestBid);
   });
 
   it("Cannot withdraw before the auction ends", async function () {
@@ -401,8 +408,6 @@ describe("FARO English Auction Single", function () {
     const tx = await faroEngAuctSingleTemp.withdrawNFT(faroNFTAddress, tokenIdTemp);
     await tx.wait();
     expect(await faroNFT.ownerOf(tokenIdTemp)).to.be.equal(signerTemp.address);
-    const auction = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
-    expect(auction.tokenWithdrawn).to.be.equal(true);
   });
 
   it("Non-bidder cannot withdraw auction item(NFT)", async function () {
@@ -432,7 +437,7 @@ describe("FARO English Auction Single", function () {
     faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
     const auction = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
     const userBid = await faroEngAuctSingle.getBidOfAddressByAuctionId(auction.auctionId, signerTemp.address);
-    expect(userBid).to.be.eq(BID_PRICE_HIGH.add(BID_PRICE_LOWER_THAN_HIGH));
+    expect(userBid).to.be.eq(BID_PRICE_HIGH.add(BID_INCREMENT.mul(3)));
     await expect(await faroEngAuctSingleTemp.withdraw(faroNFTAddress, tokenIdTemp)).to.changeEtherBalance(
       signerTemp,
       userBid
@@ -478,35 +483,27 @@ describe("FARO English Auction Single", function () {
     const tx = await faroEngAuctSingleTemp.withdrawNFT(faroNFTAddress, tokenIdTemp);
     await tx.wait();
     expect(await faroNFT.ownerOf(tokenIdTemp)).to.be.equal(signerTemp.address);
-    const auction = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
-    expect(auction.tokenWithdrawn).to.be.equal(true);
   });
 
   it("Winner cannot attempt to withdraw the NFT again", async function () {
     tokenIdTemp = 2;
     signerTemp = nonTokenOwners[2];
     faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
-    await expect(faroEngAuctSingleTemp.withdrawNFT(faroNFTAddress, tokenIdTemp)).to.be.revertedWith("NFT already withdrawn");
+    await expect(faroEngAuctSingleTemp.withdrawNFT(faroNFTAddress, tokenIdTemp)).to.be.revertedWith(
+      "ERC721: transfer caller is not owner nor approved"
+    );
   });
 
-  it("Winner can withdraw the funds if higher than highest binding bid", async function () {
+  it("Winner not allowed to withdraw funds", async function () {
     tokenIdTemp = 2;
     signerTemp = nonTokenOwners[2];
     faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
-    const auction = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
-    const userBid = await faroEngAuctSingle.getBidOfAddressByAuctionId(auction.auctionId, signerTemp.address);
-    const diff = userBid.sub(auction.highestBindingBid);
-    await expect(await faroEngAuctSingleTemp.withdraw(faroNFTAddress, tokenIdTemp)).to.changeEtherBalance(signerTemp, diff);
+    await expect(faroEngAuctSingleTemp.withdraw(faroNFTAddress, tokenIdTemp)).to.be.revertedWith(
+      "Withdrawal not allowed for highest bidder"
+    );
   });
 
-  it("Winner cannot withdraw again", async function () {
-    tokenIdTemp = 2;
-    signerTemp = nonTokenOwners[2];
-    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
-    await expect(faroEngAuctSingleTemp.withdraw(faroNFTAddress, tokenIdTemp)).to.be.revertedWith("No funds to withdraw");
-  });
-
-  it("Previous Owner can withdraw highest binding bid", async function () {
+  it("Previous Owner can withdraw highest bid", async function () {
     tokenIdTemp = 2;
     signerTemp = tokenOwners[2];
     faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
@@ -515,7 +512,7 @@ describe("FARO English Auction Single", function () {
     expect(userBid).to.be.eq(0);
     await expect(await faroEngAuctSingleTemp.withdraw(faroNFTAddress, tokenIdTemp)).to.changeEtherBalance(
       signerTemp,
-      auction.highestBindingBid
+      auction.highestBid
     );
   });
 
