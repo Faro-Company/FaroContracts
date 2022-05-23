@@ -1,9 +1,11 @@
+// SPDX-License-Identifier: MIT
+
 pragma solidity 0.8.4;
 
 import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 
 import {FaroNFTFactory} from './FaroNFTFactory.sol';
-import {FaroEnglishAuctionFactory} from '../EnglishAuctions/FaroEnglishAuctionFactory.sol';
+import {FaroEnglishAuction} from '../EnglishAuctions/FaroEnglishAuction.sol';
 
 
 contract FaroMarketplace {
@@ -27,16 +29,16 @@ contract FaroMarketplace {
 
     mapping(address => mapping(address => mapping(uint => MarketplaceItem))) marketplaceItems;
     FaroNFTFactory faroNFTFactory;
-    FaroEnglishAuctionFactory faroEnglishAuctionFactory;
+    FaroEnglishAuction faroEnglishAuction;
 
-    constructor(address _faroNFTFactory, address _faroEnglishAuctionFactory) {
+    constructor(address _faroNFTFactory, address _faroEnglishAuction) {
         faroNFTFactory = FaroNFTFactory(_faroNFTFactory);
-        faroEnglishAuctionFactory = FaroEnglishAuctionFactory(_faroEnglishAuctionFactory);
-        require(msg.sender == faroEnglishAuctionFactory.owner(), "Marketplace creator must be the owner of English auction factory");
+        faroEnglishAuction = FaroEnglishAuction(_faroEnglishAuction);
+        require(msg.sender == faroEnglishAuction.owner(), "Marketplace creator must be the owner of English auction factory");
         require(msg.sender == faroNFTFactory.owner(), "Marketplace creator must be the owner of Faro NFT factory");
     }
 
-    function registerNFTItem(address _token, address auctionAddress, uint _floorPrice, uint _tokenId) external {
+    function registerNFTItem(address _token, uint _floorPrice, uint _tokenId) external {
         require(faroNFTFactory.getNFTByAddress(_token) > 0, "Is not a FARO NFT");
         require(IERC721(_token).ownerOf(_tokenId) == msg.sender,
             "Auction can only be deployed by the owner of the token.");
@@ -45,7 +47,7 @@ contract FaroMarketplace {
         IERC721(_token).transferFrom(msg.sender, address(this), _tokenId);
     }
 
-    function offer(address _token, uint _tokenId, address _owner, uint offerPrice) payable external returns (bool) {
+    function offer(address _token, uint _tokenId, address _owner) payable external returns (bool) {
         MarketplaceItem memory item = marketplaceItems[_owner][_token][_tokenId];
         require(item.saleState == SaleState.SaleStarted, "Item is not for sale.");
         require(msg.sender != item.owner, "Owner cannot bid.");

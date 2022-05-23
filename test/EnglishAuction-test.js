@@ -1,698 +1,575 @@
-const { expect } = require("chai");
+/* eslint-disable prettier/prettier */
+const { expect, use } = require("chai");
 const { ethers } = require("hardhat");
-const { expectRevert } = require("@openzeppelin/test-helpers");
+const { solidity } = require("ethereum-waffle");
 const timeMachine = require("ether-time-traveler");
+
+// use solidity plugin
+use(solidity);
 
 const NAME = "FARO Journey Starting";
 const SYMBOL = "FAROM";
 const TOKEN_URI = "HERE";
-const FLOOR_PRICE = 5;
-const INSUFFICIENT_BID_PRICE = "2";
-const BID_PRICE_MORE_THAN_FLOOR = "8";
-const BID_PRICE_LOWER_THAN_HIGH = "6";
-const BID_PRICE_LOWER_THAN_HIGH_DOUBLED = "12";
-const BID_PRICE_MORE_THAN_FLOOR_DOUBLED = "16";
-
-const AUCTION_PERIOD = 600;
-const FAST_FORWARD_PERIOD = 4 * AUCTION_PERIOD;
-const BID_INCREMENT = 1;
-
 const CONTENT_ID = 123456;
+const FLOOR_PRICE = ethers.utils.parseEther("1");
+const BID_INCREMENT = ethers.utils.parseEther("0.1");
+const LESS_BID_INCREMENT = ethers.utils.parseEther("0.09");
+const INSUFFICIENT_BID_PRICE = ethers.utils.parseEther("0.8");
+const BID_PRICE_MORE_THAN_FLOOR = ethers.utils.parseEther("1.2");
+const BID_PRICE_HIGH = ethers.utils.parseEther("2");
+const BID_PRICE_HIGHER = ethers.utils.parseEther("4");
+const ONE_DAY_IN_SEC = 86400; // 1 day -> 86400 seconds
+const AUCTION_PERIOD = 10 * ONE_DAY_IN_SEC;
+const AUCTION_PERIOD_TOO_LONG = 400 * ONE_DAY_IN_SEC; // max 1 year in contract
+const FAST_FORWARD_PERIOD = AUCTION_PERIOD * 4;
 
-const ACCOUNTS_NUM = 20;
-const PARTICIPANTS_NUM = 17;
-const SAMPLE_TOKEN_ID = 1;
+const AuctionState = Object.freeze({
+  created: 0,
+  started: 1,
+  ended: 2,
+  cancelled: 3,
+});
 
-const AUCTION_STARTED_STATE = "1";
-const AUCTION_DEPLOYED_STATE = "0";
-const AUCTION_ENDED_STATE = "2";
-const AUCTION_CANCELLED_STATE = "3";
+describe("FARO English Auction", function () {
+  const testStartTimeStamp = Math.floor(Date.now() / 1000);
+  let accounts;
+  let contractOwner, nonTokenOwners, tokenOwners;
+  let FaroEngAuctSingle, faroEngAuctSingle, faroEngAuctSingleTemp;
+  let FaroNFT, faroNFT, faroNFTAddress;
+  let tokenIdTemp;
+  let signerTemp;
 
-describe("FaroEnglishAuction", function () {
   before(async function () {
-    const accounts = await ethers.provider.listAccounts();
-    this.owner = accounts[0];
-    this.user = accounts[1];
-    this.user2 = accounts[2];
-    this.ownerSigner = await ethers.getSigner(this.owner);
-    this.nftHolder = await ethers.getSigner(this.user);
-    this.distributor = await ethers.getSigner(this.user2);
+    accounts = await ethers.getSigners();
+    contractOwner = accounts[0];
+    nonTokenOwners = accounts.slice(1, 5);
+    tokenOwners = accounts.slice(5, 10);
 
-    this.supply = 10000000;
+    FaroEngAuctSingle = await ethers.getContractFactory("FaroEnglishAuction");
+    faroEngAuctSingle = await FaroEngAuctSingle.deploy();
+    await faroEngAuctSingle.deployed();
 
-    let participantWallet;
-    let participantAddress;
+    FaroNFT = await ethers.getContractFactory("FaroNFT");
+    faroNFT = await FaroNFT.deploy(NAME, SYMBOL, TOKEN_URI, CONTENT_ID);
+    await faroNFT.deployed();
+    faroNFTAddress = faroNFT.address;
 
-    this.offeringParticipants = [];
-    this.funderAddresses = [];
-    this.allocations = [];
-
-    this.fairAlloc = Math.floor(this.supply / PARTICIPANTS_NUM);
-
-    for (let i = 3; i < ACCOUNTS_NUM; i++) {
-      participantAddress = accounts[i];
-      participantWallet = await ethers.getSigner(participantAddress);
-      this.offeringParticipants.push(participantWallet);
-      this.funderAddresses.push(participantAddress);
-      this.allocations.push(this.fairAlloc);
-    }
-
-    const KtlNFT = await ethers.getContractFactory("FaroNFT");
-    this.ktlNFT = await KtlNFT.deploy(NAME, SYMBOL, TOKEN_URI, CONTENT_ID);
-    await this.ktlNFT.deployed();
-    const erc721ContractWithSigner = this.ktlNFT.connect(this.ownerSigner);
-
-    const FaroEnglishAuctionFactory = await ethers.getContractFactory(
-      "FaroEnglishAuctionFactory"
-    );
-    this.faroEnglishAuctionFactory = await FaroEnglishAuctionFactory.deploy();
-    await this.faroEnglishAuctionFactory.deployed();
-    const faroEnglishAuctionFactoryAddress =
-      this.faroEnglishAuctionFactory.address;
-
-    let wallet;
-    let signer;
-    let balance;
-    this.signers = [];
-    this.wallets = [];
-    this.initialBalances = [];
-    let tokenId;
-    for (let i = 3; i < ACCOUNTS_NUM; i++) {
-      tokenId = i - 3;
-      const mintTx = await erc721ContractWithSigner.mint(accounts[i], tokenId);
+    for (const [index, account] of tokenOwners.entries()) {
+      const faroNFTWithSigner = faroNFT.connect(account);
+      const tokenId = index;
+      const mintTx = await faroNFTWithSigner.mint(account.address, tokenId);
       await mintTx.wait();
-      wallet = await ethers.getSigner(accounts[i]);
-      this.wallets.push(wallet);
-      signer = this.ktlNFT.connect(wallet);
-      const approveTx = await signer.approve(
-        faroEnglishAuctionFactoryAddress,
-        tokenId
-      );
-      await approveTx.wait();
-      signer = this.faroEnglishAuctionFactory.connect(wallet);
-      this.signers.push(signer);
-      balance = await wallet.getBalance();
-      this.initialBalances.push(balance);
-    }
 
-    this.factoryWithNonOwner = this.faroEnglishAuctionFactory.connect(
-      this.distributor
-    );
+      const approveTx = await faroNFTWithSigner.approve(faroEngAuctSingle.address, tokenId);
+      await approveTx.wait();
+    }
   });
 
   it("Auction cannot be created by non-owner", async function () {
-    await expectRevert(
-      this.factoryWithNonOwner.createAuction(
-        BID_INCREMENT,
-        AUCTION_PERIOD,
-        this.ktlNFT.address,
-        SAMPLE_TOKEN_ID,
-        FLOOR_PRICE
-      ),
-      "Auction can only be deployed by the owner of the token."
-    );
+    tokenIdTemp = 0;
+    signerTemp = nonTokenOwners[0];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(
+      faroEngAuctSingleTemp.createAuction(faroNFTAddress, tokenIdTemp, AUCTION_PERIOD, FLOOR_PRICE, BID_INCREMENT)
+    ).to.be.revertedWith("ERC721: transfer of token that is not own");
   });
 
   it("Auction cannot be created by owner of different tokenID", async function () {
-    await expectRevert(
-      this.signers[0].createAuction(
-        BID_INCREMENT,
-        AUCTION_PERIOD,
-        this.ktlNFT.address,
-        SAMPLE_TOKEN_ID,
-        FLOOR_PRICE
-      ),
-      "Auction can only be deployed by the owner of the token."
-    );
+    tokenIdTemp = 0;
+    signerTemp = nonTokenOwners[1];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(
+      faroEngAuctSingleTemp.createAuction(faroNFTAddress, tokenIdTemp, AUCTION_PERIOD, FLOOR_PRICE, BID_INCREMENT)
+    ).to.be.revertedWith("ERC721: transfer of token that is not own");
+  });
+
+  it("Auction cannot be created when period is too long", async function () {
+    tokenIdTemp = 0;
+    signerTemp = tokenOwners[0];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(
+      faroEngAuctSingleTemp.createAuction(faroNFTAddress, tokenIdTemp, AUCTION_PERIOD_TOO_LONG, FLOOR_PRICE, BID_INCREMENT)
+    ).to.be.revertedWith("Auction duration too long");
   });
 
   it("Auction can be created by owners", async function () {
-    let participantSigner, tx, auctionAddress;
-    for (let i = 0; i < this.signers.length; i++) {
-      participantSigner = this.signers[i];
-      tx = await participantSigner.createAuction(
-        BID_INCREMENT,
-        AUCTION_PERIOD,
-        this.ktlNFT.address,
-        i,
-        FLOOR_PRICE
-      );
-      await tx.wait();
-      expect((await participantSigner.getAuctionCount()).toString()).to.equal(
-        (i + 1).toString()
-      );
-      auctionAddress = await participantSigner.getAuction(i);
-      const FaroEnglishAuction = await ethers.getContractFactory(
-        "FaroEnglishAuction"
-      );
-      const faroEnglishAuction = await FaroEnglishAuction.attach(
-        auctionAddress
-      );
-      participantSigner = faroEnglishAuction.connect(this.wallets[0]);
-      expect((await participantSigner.auctionState()).toString()).to.equal(
-        AUCTION_DEPLOYED_STATE
-      );
+    for (const [index, tokenOwner] of tokenOwners.entries()) {
+      tokenIdTemp = index;
+      signerTemp = tokenOwner;
+      faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+      await expect(
+        faroEngAuctSingleTemp.createAuction(faroNFTAddress, tokenIdTemp, AUCTION_PERIOD, FLOOR_PRICE, BID_INCREMENT)
+      ).to.emit(faroEngAuctSingleTemp, "Created");
+      const auction = await faroEngAuctSingle.getAuctionbyIndex(index);
+      expect(auction.auctionState).to.be.eq(AuctionState.created);
     }
+    expect(await faroEngAuctSingle.getTotalAuctionCount()).to.be.eq(tokenOwners.length);
   });
 
   it("Already created auction with given token address and token ID cannot be created again", async function () {
-    const participantSigner = this.signers[0];
-    await expectRevert(participantSigner.createAuction(
-        BID_INCREMENT,
-        AUCTION_PERIOD,
-        this.ktlNFT.address,
-        0,
-        FLOOR_PRICE * 2
-    ), "There is already a non-ended auction with given token address and ID");
-  });
-
-  it("Num of live auctions is 0 before start", async function () {
-    expect((await this.signers[0].getLiveAuctions(0, 1)).length).to.equal(0);
+    tokenIdTemp = 0;
+    signerTemp = nonTokenOwners[0];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(
+      faroEngAuctSingleTemp.createAuction(faroNFTAddress, tokenIdTemp, AUCTION_PERIOD, FLOOR_PRICE, BID_INCREMENT)
+    ).to.be.revertedWith("ERC721: transfer of token that is not own"); // since the token is already in auction contract
   });
 
   it("Auction cannot be started by nonOwner", async function () {
-    const participantSigner = this.signers[0];
-    const lastAuction = await participantSigner.getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const auctionSigner = faroEnglishAuction.connect(this.wallets[0]);
-    await expectRevert(
-      auctionSigner.start(),
-      "Only owner can perform this operation."
+    tokenIdTemp = 1;
+    signerTemp = nonTokenOwners[0];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.startAuction(faroNFTAddress, tokenIdTemp)).to.be.revertedWith(
+      "Caller is not token owner"
     );
   });
 
   it("Cannot bid on non-started auction", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
-    await expectRevert(
-      participantSigner.bid({
-        value: ethers.utils.parseEther(BID_PRICE_MORE_THAN_FLOOR),
-      }),
-      "Auction is not live."
-    );
+    tokenIdTemp = 1;
+    signerTemp = nonTokenOwners[0];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(
+      faroEngAuctSingleTemp.bid(faroNFTAddress, tokenIdTemp, { value: BID_PRICE_MORE_THAN_FLOOR })
+    ).to.be.revertedWith("Auction is not live");
   });
 
   it("Auction can be started by owner", async function () {
-    let participantSigner, tx, auctionAddress, faroEnglishAuction;
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    for (let i = 0; i < this.signers.length; i++) {
-      participantSigner = this.signers[i];
-      auctionAddress = await participantSigner.getAuction(i);
-      faroEnglishAuction = await FaroEnglishAuction.attach(auctionAddress);
-      participantSigner = faroEnglishAuction.connect(this.wallets[i]);
-      tx = await participantSigner.start();
-      await tx.wait();
-      expect((await participantSigner.auctionState()).toString()).to.equal(
-        AUCTION_STARTED_STATE
+    for (const [index, tokenOwner] of tokenOwners.entries()) {
+      tokenIdTemp = index;
+      signerTemp = tokenOwner;
+      faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+      await expect(faroEngAuctSingleTemp.startAuction(faroNFTAddress, tokenIdTemp)).to.emit(
+        faroEngAuctSingleTemp,
+        "Started"
       );
-      expect((await this.signers[0].getLiveAuctions(0, i + 1)).length).to.equal(
-        i + 1
-      );
+      const auction = await faroEngAuctSingle.getAuctionbyIndex(index);
+      expect(auction.auctionState).to.be.eq(AuctionState.started);
+      expect(auction.startTime).to.be.gt(testStartTimeStamp);
     }
   });
 
   it("Cannot make bid with less than floor price", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
-    await expectRevert(
-      participantSigner.bid({
-        value: ethers.utils.parseEther(INSUFFICIENT_BID_PRICE),
-      }),
-      "Cannot send bid less than floor price."
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[0];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(
+      faroEngAuctSingleTemp.bid(faroNFTAddress, tokenIdTemp, { value: INSUFFICIENT_BID_PRICE })
+    ).to.be.revertedWith("Cannot send bid less than floor price");
+  });
+
+  it("Token owner cannot make bid on own auction", async function () {
+    tokenIdTemp = 2;
+    signerTemp = tokenOwners[2];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.bid(faroNFTAddress, tokenIdTemp, { value: BID_PRICE_HIGH })).to.be.revertedWith(
+      "Caller is token owner"
     );
   });
 
   it("Can make bid more than floor price", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[0];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.bid(faroNFTAddress, tokenIdTemp, { value: BID_PRICE_HIGH })).to.emit(
+      faroEngAuctSingleTemp,
+      "BidPlaced"
     );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
-    const tx = await participantSigner.bid({
-      value: ethers.utils.parseEther(BID_PRICE_MORE_THAN_FLOOR),
-    });
+    const auction = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
+    const userBid = await faroEngAuctSingle.getBidOfAddressByAuctionId(auction.auctionId, signerTemp.address);
+    expect(userBid).to.be.eq(BID_PRICE_HIGH);
+  });
+
+  it("Can make bid more than floor price to another auction", async function () {
+    tokenIdTemp = 3;
+    signerTemp = nonTokenOwners[0];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    const tx = await faroEngAuctSingleTemp.bid(faroNFTAddress, tokenIdTemp, { value: BID_PRICE_MORE_THAN_FLOOR });
     await tx.wait();
-    expect((await participantSigner.getHighestBid()).toString()).to.equal(
-      ethers.utils.parseEther(BID_PRICE_MORE_THAN_FLOOR).toString()
+    const auction = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
+    const userBid = await faroEngAuctSingle.getBidOfAddressByAuctionId(auction.auctionId, signerTemp.address);
+    expect(userBid).to.be.eq(BID_PRICE_MORE_THAN_FLOOR);
+  });
+
+  it("Non-owner cannot cancel auction", async function () {
+    tokenIdTemp = 3;
+    signerTemp = nonTokenOwners[0];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.cancelAuction(faroNFTAddress, tokenIdTemp)).to.be.revertedWith(
+      "Caller is not token owner"
     );
   });
 
-  it("Can make bid more than floor price to another auction ", async function () {
-    const firstAuction = await this.signers[0].getAuction(3);
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
+  it("Owner can cancel auction", async function () {
+    tokenIdTemp = 3;
+    signerTemp = tokenOwners[3];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.cancelAuction(faroNFTAddress, tokenIdTemp)).to.emit(
+      faroEngAuctSingleTemp,
+      "Cancelled"
     );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(firstAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
-    const tx = await participantSigner.bid({
-      value: ethers.utils.parseEther(BID_PRICE_MORE_THAN_FLOOR),
-    });
-    await tx.wait();
-    expect((await participantSigner.getHighestBid()).toString()).to.equal(
-      ethers.utils.parseEther(BID_PRICE_MORE_THAN_FLOOR).toString()
-    );
+    const auction = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
+    expect(auction.auctionState).to.be.eq(AuctionState.cancelled);
   });
 
-  it("Non-owner cannot cancel auction ", async function () {
-    const firstAuction = await this.signers[0].getAuction(3);
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(firstAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
-    await expectRevert(
-      participantSigner.cancelAuction(),
-      "Only owner can perform this operation."
-    );
-  });
-
-  it("Owner can cancel auction ", async function () {
-    const firstAuction = await this.signers[0].getAuction(3);
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(firstAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[3]);
-    const tx = await participantSigner.cancelAuction();
-    await tx.wait();
-    expect((await participantSigner.auctionState()).toString()).to.equal(
-      AUCTION_CANCELLED_STATE
-    );
-  });
-
-  it("Cannot bid on cancelled auction ", async function () {
-    const firstAuction = await this.signers[0].getAuction(3);
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(firstAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
-    await expectRevert(
-      participantSigner.bid({
-        value: ethers.utils.parseEther(BID_PRICE_MORE_THAN_FLOOR),
-      }),
-      "Auction is not live."
-    );
+  it("Cannot bid on cancelled auction", async function () {
+    tokenIdTemp = 3;
+    signerTemp = nonTokenOwners[0];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(
+      faroEngAuctSingleTemp.bid(faroNFTAddress, tokenIdTemp, { value: BID_PRICE_MORE_THAN_FLOOR })
+    ).to.be.revertedWith("Auction is not live");
   });
 
   it("Can withdraw funds back from cancelled auction", async function () {
-    const lastAuction = await this.signers[0].getAuction(3);
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
+    tokenIdTemp = 3;
+    signerTemp = nonTokenOwners[0];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    const auction = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
+    const userBid = await faroEngAuctSingle.getBidOfAddressByAuctionId(auction.auctionId, signerTemp.address);
+    await expect(await faroEngAuctSingleTemp.withdraw(faroNFTAddress, tokenIdTemp)).to.changeEtherBalance(
+      signerTemp,
+      userBid
     );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
-    const participantAddress = this.wallets[0].address;
-    const preWithdrawBid = await participantSigner.getBidForAnAddress(
-      participantAddress
-    );
-    const tx = await participantSigner.withdraw();
-    await tx.wait();
-    const postWithdrawBid = await participantSigner.getBidForAnAddress(
-      participantAddress
-    );
-    expect(postWithdrawBid).to.not.equal(preWithdrawBid);
   });
 
-  it("Non-owner Cannot withdraw NFT from cancelled auction", async function () {
-    const lastAuction = await this.signers[0].getAuction(3);
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
-    await expectRevert(
-      participantSigner.withdrawNFT(),
-      "Auction must be ended for this operation."
-    );
+  it("Cannot withdraw already withdrawn funds from cancelled auction", async function () {
+    tokenIdTemp = 3;
+    signerTemp = nonTokenOwners[0];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    const auction = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
+    const userBid = await faroEngAuctSingle.getBidOfAddressByAuctionId(auction.auctionId, signerTemp.address);
+    expect(userBid).to.be.eq(0);
+    await expect(faroEngAuctSingleTemp.withdraw(faroNFTAddress, tokenIdTemp)).to.be.revertedWith("No funds to withdraw");
+  });
+
+  it("Non-Owner cannot withdraw NFT from cancelled auction", async function () {
+    tokenIdTemp = 3;
+    signerTemp = tokenOwners[2];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.withdrawNFT(faroNFTAddress, tokenIdTemp)).to.be.revertedWith("cannot transfer NFT");
   });
 
   it("Owner can withdraw NFT from cancelled auction", async function () {
-    const lastAuction = await this.signers[0].getAuction(3);
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[3]);
-    const tx = await participantSigner.withdrawNFTWhenCancelled();
+    tokenIdTemp = 3;
+    signerTemp = tokenOwners[3];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    const tx = await faroEngAuctSingleTemp.withdrawNFT(faroNFTAddress, tokenIdTemp);
     await tx.wait();
-    expect((await this.ktlNFT.ownerOf(3)).toString()).to.equal(
-      this.wallets[3].address
-    );
+    expect(await faroNFT.ownerOf(tokenIdTemp)).to.be.equal(signerTemp.address);
   });
 
-  it("Cannot change highest bidder by offering a lower bid price", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
+  it("Owner can create and start new auction for same token after cancellation", async function () {
+    tokenIdTemp = 3;
+    signerTemp = tokenOwners[3];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    const faroNFTTemp = faroNFT.connect(signerTemp);
+    const approveTx = await faroNFTTemp.approve(faroEngAuctSingle.address, tokenIdTemp);
+    await approveTx.wait();
+    let tx = await faroEngAuctSingleTemp.createAuction(
+      faroNFTAddress,
+      tokenIdTemp,
+      AUCTION_PERIOD,
+      FLOOR_PRICE,
+      BID_INCREMENT
     );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[1]);
-    const tx = await participantSigner.bid({
-      value: ethers.utils.parseEther(BID_PRICE_LOWER_THAN_HIGH),
-    });
     await tx.wait();
-    const secondParticipantSigner = faroEnglishAuction.connect(this.wallets[2]);
-    expect(
-      (
-        await secondParticipantSigner.getBidForAnAddress(
-          this.wallets[1].address
-        )
-      ).toString()
-    ).to.equal(ethers.utils.parseEther(BID_PRICE_LOWER_THAN_HIGH).toString());
-    expect((await secondParticipantSigner.highestBidder()).toString()).to.equal(
-      this.wallets[0].address
-    );
+    tx = await faroEngAuctSingleTemp.startAuction(faroNFTAddress, tokenIdTemp);
+    await tx.wait();
+    const auction = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
+    expect(auction.auctionState).to.be.eq(AuctionState.started);
   });
 
-  it("Can change highest bid by putting more amount", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[1]);
-    const tx = await participantSigner.bid({
-      value: ethers.utils.parseEther(BID_PRICE_LOWER_THAN_HIGH),
-    });
-    await tx.wait();
-    const secondParticipantSigner = faroEnglishAuction.connect(this.wallets[2]);
-    expect(
-      (
-        await secondParticipantSigner.getBidForAnAddress(
-          this.wallets[1].address
-        )
-      ).toString()
-    ).to.equal(
-      ethers.utils.parseEther(BID_PRICE_LOWER_THAN_HIGH_DOUBLED).toString()
-    );
-    expect((await secondParticipantSigner.highestBidder()).toString()).to.equal(
-      this.wallets[1].address
-    );
+  it("Reverts when bid not minimum highest+increment", async function () {
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[1];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(
+      faroEngAuctSingleTemp.bid(faroNFTAddress, tokenIdTemp, { value: BID_PRICE_HIGH.add(LESS_BID_INCREMENT) })
+    ).to.be.revertedWith("minimum bid = highest + increment");
   });
 
-  it("Can change bids by putting more amount to existing again", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
-    const tx = await participantSigner.bid({
-      value: ethers.utils.parseEther(BID_PRICE_MORE_THAN_FLOOR),
-    });
+  it("Can overbid existing highest bidder", async function () {
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[1];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    const auctionBefore = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
+    const tx = await faroEngAuctSingleTemp.bid(faroNFTAddress, tokenIdTemp, { value: BID_PRICE_HIGH.add(BID_INCREMENT) });
     await tx.wait();
-    const secondParticipantSigner = faroEnglishAuction.connect(this.wallets[2]);
-    expect(
-      (
-        await secondParticipantSigner.getBidForAnAddress(
-          this.wallets[0].address
-        )
-      ).toString()
-    ).to.equal(
-      ethers.utils.parseEther(BID_PRICE_MORE_THAN_FLOOR_DOUBLED).toString()
-    );
-    expect((await secondParticipantSigner.highestBidder()).toString()).to.equal(
-      this.wallets[0].address
-    );
+    const userBid = await faroEngAuctSingle.getBidOfAddressByAuctionId(auctionBefore.auctionId, signerTemp.address);
+    expect(userBid).to.be.eq(BID_PRICE_HIGH.add(BID_INCREMENT));
+    const auctionAfter = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
+    expect(auctionBefore.highestBidder).to.not.equal(auctionAfter.highestBidder);
+    expect(auctionAfter.highestBidder).to.equal(signerTemp.address);
+    expect(auctionAfter.highestBid).to.be.gt(auctionBefore.highestBid);
+  });
+
+  it("Highest bidder can overbid himself", async function () {
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[1];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    const auctionBefore = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
+    const tx = await faroEngAuctSingleTemp.bid(faroNFTAddress, tokenIdTemp, { value: BID_INCREMENT.mul(2) });
+    await tx.wait();
+    const userBid = await faroEngAuctSingle.getBidOfAddressByAuctionId(auctionBefore.auctionId, signerTemp.address);
+    expect(userBid).to.be.eq(BID_PRICE_HIGH.add(BID_INCREMENT.mul(3)));
+    const auctionAfter = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
+    expect(auctionAfter.highestBidder).to.equal(signerTemp.address);
+    expect(auctionAfter.highestBid).to.be.gt(auctionBefore.highestBid);
+  });
+
+  it("Another account can overbid again", async function () {
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[2];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    const auctionBefore = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
+    const tx = await faroEngAuctSingleTemp.bid(faroNFTAddress, tokenIdTemp, { value: BID_PRICE_HIGHER });
+    await tx.wait();
+    const userBid = await faroEngAuctSingle.getBidOfAddressByAuctionId(auctionBefore.auctionId, signerTemp.address);
+    expect(userBid).to.be.eq(BID_PRICE_HIGHER);
+    const auctionAfter = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
+    expect(auctionBefore.highestBidder).to.not.equal(auctionAfter.highestBidder);
+    expect(auctionAfter.highestBidder).to.equal(signerTemp.address);
+    expect(auctionAfter.highestBid).to.be.gt(auctionBefore.highestBid);
   });
 
   it("Cannot withdraw before the auction ends", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[2]);
-    await expectRevert(
-      participantSigner.withdraw(),
-      "Auction did not end or was cancelled."
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[1];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.withdraw(faroNFTAddress, tokenIdTemp)).to.be.revertedWith(
+      "Auction is still live or in created-state"
     );
   });
 
-  it("Winner cannot withdraw the item before the auction ends", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[2]);
-    await expectRevert(
-      participantSigner.withdrawNFT(),
-      "Auction must be ended for this operation."
+  it("Cannot withdraw NFT before the auction ends", async function () {
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[2];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.withdrawNFT(faroNFTAddress, tokenIdTemp)).to.be.revertedWith(
+      "Auction is still live or in created-state"
     );
   });
 
   it("Cannot trigger end before the end time", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[2]);
-    const tx = await participantSigner.end();
-    tx.wait();
-    expect((await participantSigner.auctionState()).toString()).to.equal(
-      AUCTION_STARTED_STATE
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[2];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.endAuction(faroNFTAddress, tokenIdTemp)).to.be.revertedWith(
+      "Auction cannot be ended"
     );
   });
 
   it("Cannot participate after the auction ends", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[2]);
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[2];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
     await timeMachine.advanceTimeAndBlock(ethers.provider, FAST_FORWARD_PERIOD);
-    await expectRevert(
-      participantSigner.bid({
-        value: ethers.utils.parseEther(BID_PRICE_MORE_THAN_FLOOR),
-      }),
-      "Auction is not live."
+    await expect(faroEngAuctSingleTemp.bid(faroNFTAddress, tokenIdTemp, { value: BID_PRICE_HIGHER })).to.be.revertedWith(
+      "Auction is not live"
     );
   });
 
   it("Auctions have already ended", async function () {
-    let tx, auction, participantSigner, engAuction, EngAuction;
-    for (let i = 0; i < this.signers.length; i++) {
-      if (i === 3) continue;
-      auction = await this.signers[0].getAuction(i);
-      EngAuction = await ethers.getContractFactory("FaroEnglishAuction");
-      engAuction = await EngAuction.attach(auction);
-      participantSigner = engAuction.connect(this.wallets[2]);
-      tx = await participantSigner.end();
-      tx.wait();
-      expect((await participantSigner.auctionState()).toString()).to.equal(
-        AUCTION_ENDED_STATE
+    for (const [index, tokenOwner] of tokenOwners.entries()) {
+      tokenIdTemp = index;
+      signerTemp = tokenOwner;
+      faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+      const auctionBefore = await faroEngAuctSingle.getAuctionbyIndex(index);
+      if (auctionBefore.auctionState === AuctionState.started) {
+        await expect(faroEngAuctSingleTemp.endAuction(faroNFTAddress, tokenIdTemp)).to.emit(faroEngAuctSingleTemp, "Ended");
+        const auctionAfter = await faroEngAuctSingle.getAuctionbyIndex(index);
+        expect(auctionAfter.auctionState).to.be.eq(AuctionState.ended);
+      }
+    }
+  });
+
+  it("Cannot start already ended auction", async function () {
+    for (const [index, tokenOwner] of tokenOwners.entries()) {
+      tokenIdTemp = index;
+      signerTemp = tokenOwner;
+      faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+      await expect(faroEngAuctSingleTemp.startAuction(faroNFTAddress, tokenIdTemp)).to.be.revertedWith(
+        "Auction is not in created-state"
       );
     }
   });
 
-  it("Cannot start the already ended auction", async function () {
-    const lastAuction = await this.signers[0].getAuction(2);
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[2]);
-    await expectRevert(participantSigner.start(), "Auction's already started");
+  it("Owner cannot withdraw from an auction where no bids were placed", async function () {
+    tokenIdTemp = 4;
+    signerTemp = tokenOwners[4];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.withdraw(faroNFTAddress, tokenIdTemp)).to.be.revertedWith("No funds to withdraw");
   });
 
-  it("Non-bidder cannot withdraw auction item", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[4]);
-    await expectRevert(
-      participantSigner.withdrawNFT(),
-      "Only the highest bidder can withdraw the auction item."
-    );
-  });
-
-  it("Non-bidder cannot withdrawal", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[4]);
-    await expectRevert(
-      participantSigner.withdraw(),
-      "Sender has no bids to withdraw."
-    );
-  });
-
-  it("Not winner cannot withdraw auction item", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[1]);
-    await expectRevert(
-      participantSigner.withdrawNFT(),
-      "Only the highest bidder can withdraw the auction item."
-    );
-  });
-
-  it("Not winner can withdraw its funds", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[1]);
-    const tx = await participantSigner.withdraw();
+  it("Owner can withdraw the auction item(NFT) from an auction where no bids were placed", async function () {
+    tokenIdTemp = 4;
+    signerTemp = tokenOwners[4];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    const tx = await faroEngAuctSingleTemp.withdrawNFT(faroNFTAddress, tokenIdTemp);
     await tx.wait();
-    expect(
-      (
-        await participantSigner.getBidForAnAddress(this.wallets[1].address)
-      ).toString()
-    ).to.equal("0");
+    expect(await faroNFT.ownerOf(tokenIdTemp)).to.be.equal(signerTemp.address);
   });
 
-  it("Not winner cannot withdraw its funds again", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
+  it("Non-bidder cannot withdraw auction item(NFT)", async function () {
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[3];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.withdrawNFT(faroNFTAddress, tokenIdTemp)).to.be.revertedWith("cannot transfer NFT");
+  });
+
+  it("Non-bidder cannot withdraw", async function () {
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[3];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.withdraw(faroNFTAddress, tokenIdTemp)).to.be.revertedWith("No funds to withdraw");
+  });
+
+  it("Not-Winner cannot withdraw auction item (NFT)", async function () {
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[1];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.withdrawNFT(faroNFTAddress, tokenIdTemp)).to.be.revertedWith("cannot transfer NFT");
+  });
+
+  it("Not-Winner can withdraw its funds", async function () {
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[1];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    const auction = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
+    const userBid = await faroEngAuctSingle.getBidOfAddressByAuctionId(auction.auctionId, signerTemp.address);
+    expect(userBid).to.be.eq(BID_PRICE_HIGH.add(BID_INCREMENT.mul(3)));
+    await expect(await faroEngAuctSingleTemp.withdraw(faroNFTAddress, tokenIdTemp)).to.changeEtherBalance(
+      signerTemp,
+      userBid
     );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[1]);
-    await expectRevert(
-      participantSigner.withdraw(),
-      "Sender has no bids to withdraw."
-    );
+  });
+
+  it("Not-Winner cannot withdraw again", async function () {
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[1];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.withdraw(faroNFTAddress, tokenIdTemp)).to.be.revertedWith("No funds to withdraw");
+  });
+
+  it("Previous owner cannot create another auction with the same NFT although the auction ended", async function () {
+    tokenIdTemp = 2;
+    signerTemp = tokenOwners[2];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(
+      faroEngAuctSingleTemp.createAuction(faroNFTAddress, tokenIdTemp, AUCTION_PERIOD, FLOOR_PRICE, BID_INCREMENT)
+    ).to.be.revertedWith("ERC721: transfer of token that is not own");
+  });
+
+  it("Previous Owner cannot withdraw auction item (NFT)", async function () {
+    tokenIdTemp = 2;
+    signerTemp = tokenOwners[2];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.withdrawNFT(faroNFTAddress, tokenIdTemp)).to.be.revertedWith("cannot transfer NFT");
   });
 
   it("Winner cannot create a new auction with the NFT before withdrawing it", async function () {
-    const participantSigner = this.faroEnglishAuctionFactory.connect(this.wallets[0]);
-    await expectRevert(participantSigner.createAuction(
-        BID_INCREMENT,
-        AUCTION_PERIOD,
-        this.ktlNFT.address,
-        PARTICIPANTS_NUM - 1,
-        FLOOR_PRICE * 2
-    ), "Auction can only be deployed by the owner of the token.");
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[2];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(
+      faroEngAuctSingleTemp.createAuction(faroNFTAddress, tokenIdTemp, AUCTION_PERIOD, FLOOR_PRICE, BID_INCREMENT)
+    ).to.be.revertedWith("ERC721: transfer of token that is not own");
   });
 
-  it("Pre-owner cannot create another auction with the same NFT although the auction ended", async function () {
-    const participantSigner = this.signers[PARTICIPANTS_NUM - 1];
-    expectRevert(participantSigner.createAuction(
-        BID_INCREMENT,
-        AUCTION_PERIOD,
-        this.ktlNFT.address,
-        PARTICIPANTS_NUM - 1,
-        FLOOR_PRICE
-    ), "Auction can only be deployed by the owner of the token.");
-  });
-
-  it("Winner can withdraw the NFT", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
-    const tx = await participantSigner.withdrawNFT();
+  it("Winner can withdraw the auction item(NFT)", async function () {
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[2];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    const tx = await faroEngAuctSingleTemp.withdrawNFT(faroNFTAddress, tokenIdTemp);
     await tx.wait();
-    this.ktlNFT.connect(this.wallets[2]);
-    expect(
-      (await this.ktlNFT.ownerOf(PARTICIPANTS_NUM - 1)).toString()
-    ).to.equal(this.wallets[0].address);
+    expect(await faroNFT.ownerOf(tokenIdTemp)).to.be.equal(signerTemp.address);
   });
 
   it("Winner cannot attempt to withdraw the NFT again", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
-    await expectRevert(
-      participantSigner.withdrawNFT(),
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[2];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.withdrawNFT(faroNFTAddress, tokenIdTemp)).to.be.revertedWith(
       "ERC721: transfer caller is not owner nor approved"
     );
   });
 
-  it("Winner can withdraw the funds if higher than highest binding bid ", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
-    const bindingBid = await participantSigner.highestBindingBid();
-    const highestBid = await participantSigner.getHighestBid();
-    expect(highestBid - bindingBid).to.be.above(0);
-    const tx = await participantSigner.withdraw();
-    await tx.wait();
-    expect(
-      await participantSigner.getBidForAnAddress(this.wallets[0].address)
-    ).to.equal(bindingBid.toString());
-  });
-
-  it("Winner cannot withdraw again ", async function () {
-    const lastAuction = await this.signers[0].getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-      "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(lastAuction);
-    const participantSigner = faroEnglishAuction.connect(this.wallets[0]);
-    await expectRevert(
-      participantSigner.withdraw(),
-      "Withdrawal amount cannot be 0."
+  it("Winner not allowed to withdraw funds", async function () {
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[2];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.withdraw(faroNFTAddress, tokenIdTemp)).to.be.revertedWith(
+      "Withdrawal not allowed for highest bidder"
     );
   });
 
-  it("Winner can create another auction with the same token and token ID" +
-      " if existing one is ended and he's already withdrawn the NFT", async function () {
-    let participantSigner = this.faroEnglishAuctionFactory.connect(this.wallets[0]);
-    const nftOwnerSigner = this.ktlNFT.connect(this.wallets[0]);
-    const tokenID = PARTICIPANTS_NUM - 1;
-    const approveTx = await nftOwnerSigner.approve(this.faroEnglishAuctionFactory.address, tokenID);
+  it("Previous Owner can withdraw highest bid", async function () {
+    tokenIdTemp = 2;
+    signerTemp = tokenOwners[2];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    const auction = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
+    const userBid = await faroEngAuctSingle.getBidOfAddressByAuctionId(auction.auctionId, signerTemp.address);
+    expect(userBid).to.be.eq(0);
+    await expect(await faroEngAuctSingleTemp.withdraw(faroNFTAddress, tokenIdTemp)).to.changeEtherBalance(
+      signerTemp,
+      auction.highestBid
+    );
+  });
+
+  it("Previous Owner cannot withdraw again", async function () {
+    tokenIdTemp = 2;
+    signerTemp = tokenOwners[2];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.withdraw(faroNFTAddress, tokenIdTemp)).to.be.revertedWith("No funds to withdraw");
+  });
+
+  it("Winner can create another auction with the same token and token ID if existing one is ended and he's already withdrawn the NFT", async function () {
+    tokenIdTemp = 2;
+    signerTemp = nonTokenOwners[2];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    const faroNFTTemp = faroNFT.connect(signerTemp);
+    const approveTx = await faroNFTTemp.approve(faroEngAuctSingle.address, tokenIdTemp);
     await approveTx.wait();
-    const tx = await participantSigner.createAuction(
-        BID_INCREMENT,
-        AUCTION_PERIOD,
-        this.ktlNFT.address,
-        tokenID,
-        FLOOR_PRICE * 2
+    const tx = await faroEngAuctSingleTemp.createAuction(
+      faroNFTAddress,
+      tokenIdTemp,
+      AUCTION_PERIOD,
+      FLOOR_PRICE,
+      BID_INCREMENT
     );
     await tx.wait();
-    auctionAddress = await participantSigner.getLastAuction();
-    const FaroEnglishAuction = await ethers.getContractFactory(
-        "FaroEnglishAuction"
-    );
-    const faroEnglishAuction = await FaroEnglishAuction.attach(
-        auctionAddress
-    );
-    participantSigner = faroEnglishAuction.connect(this.wallets[0]);
-    expect((await participantSigner.auctionState()).toString()).to.equal(
-        AUCTION_DEPLOYED_STATE
-    );
-    expect((await participantSigner.token()).toString()).to.equal(this.ktlNFT.address);
-    expect((await participantSigner.tokenId()).toString()).to.equal(tokenID.toString());
-    expect((await participantSigner.owner()).toString()).to.equal(this.wallets[0].address);
+    const auction = await faroEngAuctSingle.getLastAuctionByToken(faroNFTAddress, tokenIdTemp);
+    expect(auction.auctionState).to.be.eq(AuctionState.created);
   });
 
-  it("Num of live auctions is 0 after end", async function () {
-    expect((await this.signers[0].getLiveAuctions(0, 10)).length).to.equal(0);
+  it("Only owner can pause the contract", async function () {
+    signerTemp = tokenOwners[3];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.pause()).to.be.revertedWith("Ownable: caller is not the owner");
+    signerTemp = contractOwner;
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    const tx = await faroEngAuctSingleTemp.pause();
+    await tx.wait();
+    expect(await faroEngAuctSingleTemp.paused()).to.be.equal(true);
+  });
+
+  it("Auction cannot be created when paused", async function () {
+    tokenIdTemp = 0;
+    signerTemp = tokenOwners[0];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(
+      faroEngAuctSingleTemp.createAuction(faroNFTAddress, tokenIdTemp, AUCTION_PERIOD, FLOOR_PRICE, BID_INCREMENT)
+    ).to.be.revertedWith("Pausable: paused");
+  });
+
+  it("Only owner can unpause the contract", async function () {
+    signerTemp = tokenOwners[0];
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    await expect(faroEngAuctSingleTemp.unpause()).to.be.revertedWith("Ownable: caller is not the owner");
+    signerTemp = contractOwner;
+    faroEngAuctSingleTemp = await faroEngAuctSingle.connect(signerTemp);
+    const tx = await faroEngAuctSingleTemp.unpause();
+    await tx.wait();
+    expect(await faroEngAuctSingleTemp.paused()).to.be.equal(false);
   });
 });
