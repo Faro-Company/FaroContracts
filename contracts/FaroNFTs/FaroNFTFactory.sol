@@ -16,7 +16,7 @@ contract FaroNFTFactory is Ownable, Pausable {
 
     event NFTCreated(address indexed token);
 
-    function createNFT(string memory _contentName, string memory _symbol, string memory _agreementUri, uint _contentID,
+    function createNFT(string memory _contentName, string memory _symbol, string memory _agreementUri, string memory _contentID,
         address[] memory ownerAddresses) external onlyOwner whenNotPaused returns(uint256) {
         FaroNFT nft = new FaroNFT(_contentName, _symbol, _agreementUri, _contentID);
         for (uint i = 0; i < ownerAddresses.length; i++) {

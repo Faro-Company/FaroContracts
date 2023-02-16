@@ -42,7 +42,6 @@ contract FaroOfferingFactory is Ownable, Pausable {
             _symbol,
             _funderAddresses,
             _allocations
-
         );
 
         address offering = address(new InitializedProxy(logic, _initializationCalldata));

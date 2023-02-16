@@ -6,6 +6,7 @@ import "@openzeppelin/contracts/security/Pausable.sol";
 import { FaroDutchAuction } from './FaroDutchAuction.sol';
 import {FaroOffering} from "../Funding/FaroOffering.sol";
 
+
 contract FaroDutchAuctionFactory is Ownable, Pausable {
 
     // vaultToken -> auctionAddress

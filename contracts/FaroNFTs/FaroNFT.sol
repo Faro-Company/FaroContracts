@@ -7,10 +7,10 @@ import "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 contract FaroNFT is ERC721 {
 
     string baseURI;
-    uint256 contentID;
+    string contentID;
 
     constructor(string memory _contentName, string memory _symbol,
-        string memory _agreementUri, uint256 _contentID) ERC721(_contentName, _symbol) {
+        string memory _agreementUri, string memory _contentID) ERC721(_contentName, _symbol) {
         require(bytes(_agreementUri).length > 0, "Need to provide the URI of the agreement");
         baseURI  = _agreementUri;
         contentID = _contentID;

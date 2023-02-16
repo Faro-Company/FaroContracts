@@ -143,6 +143,13 @@ contract FaroEnglishAuction is Ownable, Pausable, IERC721Receiver {
     return lenTokenAucts;
   }
 
+  function getAuctionRemainingTimeByIndex(uint256 index) public view returns (uint256) {
+    Auction memory auct = allAuctions[index];
+    require(auct.auctionState == AuctionState.AuctionStarted, "Auction not started");
+    uint256 remainingTime = auct.startTime + auct.duration - block.timestamp;
+    return remainingTime;
+  }
+
   function getIndexFromTokenAuctions(
     address tokenAddr,
     uint256 tokenId,
